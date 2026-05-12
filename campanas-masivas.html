@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ElhyAi Chat — Panel de Agentes</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+
+<!-- Firebase SDKs -->
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+
+<style>
+:root {
+  --bg: #0d0f1a;
+  --panel: #13162a;
+  --surface: #1a1e35;
+  --border: #252a45;
+  --accent: #6c63ff;
+  --accent2: #00d4aa;
+  --accent3: #ff6b6b;
+  --warn: #ffd166;
+  --text: #e8eaf6;
+  --muted: #6b7299;
+  --wa: #25D366;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text); height:100vh; overflow:hidden; display:flex; flex-direction:column; }
+
+/* TOPBAR */
+.topbar { height:52px; background:var(--panel); border-bottom:1px solid var(--border); display:flex; align-items:center; padding:0 20px; gap:16px; flex-shrink:0; }
+.logo { font-family:'Syne',sans-serif; font-weight:800; font-size:18px; color:var(--accent); }
+.logo span { color:var(--accent2); }
+.agent-info { margin-left:auto; display:flex; align-items:center; gap:10px; font-size:13px; color:var(--muted); }
+.agent-avatar { width:32px; height:32px; border-radius:10px; background:linear-gradient(135deg,var(--accent),var(--accent2)); display:flex; align-items:center; justify-content:center; font-weight:800; font-size:13px; }
+.notif-btn { position:relative; background:var(--surface); border:1px solid var(--border); border-radius:8px; width:32px; height:32px; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:14px; }
+.notif-badge { position:absolute; top:-4px; right:-4px; background:var(--accent3); color:white; border-radius:50%; width:16px; height:16px; font-size:9px; font-weight:700; display:flex; align-items:center; justify-content:center; }
+
+/* LAYOUT */
+.main { display:flex; flex:1; overflow:hidden; }
+
+/* SIDEBAR */
+.sidebar { width:64px; background:var(--panel); border-right:1px solid var(--border); display:flex; flex-direction:column; align-items:center; padding:16px 0; gap:8px; }
+.nav-btn { width:42px; height:42px; border-radius:12px; background:transparent; border:none; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:18px; color:var(--muted); transition:all 0.2s; position:relative; }
+.nav-btn.active, .nav-btn:hover { background:var(--surface); color:var(--text); }
+.nav-btn.active::before { content:''; position:absolute; left:-8px; width:3px; height:20px; background:var(--accent); border-radius:0 3px 3px 0; }
+
+/* CONV PANEL */
+.conv-panel { width:300px; background:var(--panel); border-right:1px solid var(--border); display:flex; flex-direction:column; flex-shrink:0; }
+.conv-header { padding:14px 16px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:8px; }
+.conv-header h2 { font-family:'Syne',sans-serif; font-size:15px; font-weight:700; flex:1; }
+.filter-tabs { display:flex; padding:8px 12px; gap:4px; border-bottom:1px solid var(--border); }
+.ftab { padding:4px 10px; border-radius:8px; font-size:11px; font-weight:500; cursor:pointer; border:none; background:transparent; color:var(--muted); transition:all 0.15s; }
+.ftab.active { background:var(--accent); color:white; }
+.search-box { margin:8px 12px; position:relative; }
+.search-box input { width:100%; background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:8px 12px 8px 32px; font-size:12px; color:var(--text); font-family:'DM Sans',sans-serif; outline:none; }
+.search-box input::placeholder { color:var(--muted); }
+.si { position:absolute; left:10px; top:50%; transform:translateY(-50%); color:var(--muted); font-size:13px; }
+.conv-list { flex:1; overflow-y:auto; padding:4px 0; }
+.conv-list::-webkit-scrollbar { width:3px; }
+.conv-list::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+.conv-item { padding:10px 16px; display:flex; gap:10px; cursor:pointer; transition:background 0.15s; border-left:3px solid transparent; position:relative; }
+.conv-item:hover { background:var(--surface); }
+.conv-item.active { background:rgba(108,99,255,0.12); border-left-color:var(--accent); }
+.conv-item.espera { border-left-color:var(--warn); }
+.conv-avatar { width:38px; height:38px; border-radius:50%; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:14px; background:linear-gradient(135deg,var(--accent),var(--accent2)); }
+.conv-body { flex:1; overflow:hidden; }
+.conv-top { display:flex; justify-content:space-between; margin-bottom:3px; }
+.conv-name { font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.conv-time { font-size:10px; color:var(--muted); flex-shrink:0; }
+.conv-preview { font-size:12px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.estado-badge { position:absolute; top:10px; right:12px; font-size:9px; padding:2px 6px; border-radius:5px; font-weight:600; }
+.badge-espera { background:rgba(255,209,102,0.2); color:var(--warn); }
+.badge-atencion { background:rgba(108,99,255,0.2); color:var(--accent); }
+.badge-bot { background:rgba(0,212,170,0.2); color:var(--accent2); }
+
+/* CHAT */
+.chat-area { flex:1; display:flex; flex-direction:column; overflow:hidden; }
+.chat-header { padding:12px 20px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:12px; background:var(--panel); flex-shrink:0; }
+.chat-avatar { width:36px; height:36px; border-radius:50%; background:linear-gradient(135deg,#ff6b6b,#ffd166); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:14px; }
+.chat-info h3 { font-family:'Syne',sans-serif; font-size:14px; font-weight:700; }
+.chat-info p { font-size:11px; color:var(--muted); }
+.chat-actions { margin-left:auto; display:flex; gap:8px; }
+.btn { padding:6px 14px; border-radius:8px; font-size:12px; font-weight:500; cursor:pointer; border:none; font-family:'DM Sans',sans-serif; transition:all 0.2s; }
+.btn:hover { opacity:0.85; transform:translateY(-1px); }
+.btn-primary { background:var(--accent); color:white; }
+.btn-success { background:var(--accent2); color:#0d0f1a; }
+.btn-warn { background:var(--warn); color:#0d0f1a; }
+.btn-danger { background:var(--accent3); color:white; }
+.btn-ghost { background:var(--surface); color:var(--text); border:1px solid var(--border); }
+
+/* MESSAGES */
+.messages { flex:1; overflow-y:auto; padding:20px; display:flex; flex-direction:column; gap:10px; }
+.messages::-webkit-scrollbar { width:4px; }
+.messages::-webkit-scrollbar-thumb { background:var(--border); border-radius:4px; }
+.msg-group { display:flex; flex-direction:column; }
+.msg-group.incoming { align-items:flex-start; }
+.msg-group.outgoing { align-items:flex-end; }
+.msg-sender-label { font-size:10px; color:var(--muted); margin-bottom:3px; padding:0 4px; display:flex; align-items:center; gap:6px; }
+.bubble { max-width:70%; padding:9px 13px; border-radius:14px; font-size:13px; line-height:1.5; }
+.incoming .bubble { background:var(--surface); border-bottom-left-radius:3px; }
+.outgoing .bubble { background:var(--accent); color:white; border-bottom-right-radius:3px; }
+.bot-bubble { background:rgba(0,212,170,0.1) !important; border:1px solid rgba(0,212,170,0.25) !important; color:var(--text) !important; }
+.msg-time { font-size:10px; color:var(--muted); margin-top:3px; padding:0 4px; }
+.date-sep { text-align:center; font-size:11px; color:var(--muted); position:relative; margin:6px 0; }
+.date-sep::before, .date-sep::after { content:''; position:absolute; top:50%; width:35%; height:1px; background:var(--border); }
+.date-sep::before { left:0; } .date-sep::after { right:0; }
+.empty-chat { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; color:var(--muted); gap:8px; }
+.empty-chat span { font-size:40px; }
+.empty-chat p { font-size:13px; }
+
+/* INPUT */
+.input-area { padding:12px 20px; border-top:1px solid var(--border); background:var(--panel); }
+.takeover-bar { background:rgba(255,209,102,0.1); border:1px solid rgba(255,209,102,0.3); border-radius:10px; padding:8px 14px; margin-bottom:8px; display:flex; align-items:center; gap:10px; font-size:12px; color:var(--warn); }
+.input-row { display:flex; gap:8px; align-items:flex-end; }
+.msg-input { flex:1; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:10px 14px; font-size:13px; color:var(--text); font-family:'DM Sans',sans-serif; outline:none; resize:none; min-height:42px; max-height:100px; transition:border-color 0.2s; }
+.msg-input:focus { border-color:var(--accent); }
+.msg-input::placeholder { color:var(--muted); }
+.send-btn { width:42px; height:42px; border-radius:12px; background:var(--accent); border:none; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:16px; transition:all 0.2s; flex-shrink:0; }
+.send-btn:hover { background:#7c74ff; transform:scale(1.05); }
+
+/* RIGHT PANEL */
+.right-panel { width:240px; background:var(--panel); border-left:1px solid var(--border); overflow-y:auto; flex-shrink:0; }
+.right-panel::-webkit-scrollbar { width:3px; }
+.rp-sec { padding:14px 16px; border-bottom:1px solid var(--border); }
+.rp-sec h4 { font-family:'Syne',sans-serif; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:1px; color:var(--muted); margin-bottom:10px; }
+.info-row { display:flex; justify-content:space-between; padding:4px 0; font-size:12px; color:var(--muted); }
+.info-row span:last-child { color:var(--text); font-weight:500; }
+.metric-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.metric-card { background:var(--surface); border-radius:10px; padding:10px; border:1px solid var(--border); text-align:center; }
+.metric-val { font-family:'Syne',sans-serif; font-size:20px; font-weight:800; background:linear-gradient(135deg,var(--accent),var(--accent2)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+.metric-label { font-size:10px; color:var(--muted); margin-top:2px; }
+
+/* TOAST */
+.toast { position:fixed; bottom:20px; right:20px; background:var(--surface); border:1px solid var(--border); border-left:3px solid var(--accent2); border-radius:10px; padding:12px 16px; display:flex; align-items:center; gap:10px; font-size:13px; z-index:100; transform:translateX(120%); transition:transform 0.4s cubic-bezier(0.34,1.56,0.64,1); max-width:280px; }
+.toast.show { transform:translateX(0); }
+
+/* MODAL LOGIN */
+.modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.7); display:flex; align-items:center; justify-content:center; z-index:200; backdrop-filter:blur(4px); }
+.modal-box { background:var(--panel); border:1px solid var(--border); border-radius:16px; padding:28px; width:360px; }
+.modal-box h2 { font-family:'Syne',sans-serif; font-size:20px; font-weight:800; margin-bottom:6px; }
+.modal-box p { font-size:13px; color:var(--muted); margin-bottom:20px; }
+.form-group { margin-bottom:14px; }
+.form-group label { display:block; font-size:11px; color:var(--muted); margin-bottom:5px; font-weight:500; }
+.form-group input { width:100%; background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:10px 14px; font-size:13px; color:var(--text); font-family:'DM Sans',sans-serif; outline:none; transition:border-color 0.2s; }
+.form-group input:focus { border-color:var(--accent); }
+.btn-full { width:100%; padding:12px; border-radius:10px; background:var(--accent); color:white; border:none; font-size:14px; font-weight:600; cursor:pointer; font-family:'Syne',sans-serif; margin-top:8px; transition:all 0.2s; }
+.btn-full:hover { background:#7c74ff; }
+
+@keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+.bubble { animation:fadeIn 0.25s ease; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+.pulse { animation:pulse 2s infinite; }
+</style>
+</head>
+<body>
+
+<!-- LOGIN MODAL -->
+<div class="modal-overlay" id="loginModal">
+  <div class="modal-box">
+    <h2>ElhyAi <span style="color:var(--accent2)">Chat</span></h2>
+    <p>Panel de Agentes — Ingresa tus credenciales</p>
+    <div class="form-group">
+      <label>Nombre del agente</label>
+      <input type="text" id="agentName" placeholder="Ej: Carlos Sánchez" value="Christian Sánchez">
+    </div>
+    <div class="form-group">
+      <label>URL del Backend</label>
+      <input type="text" id="backendUrl" placeholder="https://tu-backend.railway.app" value="http://localhost:3000">
+    </div>
+    <div class="form-group">
+      <label>Firebase DB URL</label>
+      <input type="text" id="firebaseUrl" placeholder="https://tu-proyecto.firebaseio.com" value="https://listado-cobradores-default-rtdb.firebaseio.com">
+    </div>
+    <div class="form-group">
+      <label>Firebase API Key</label>
+      <input type="text" id="firebaseKey" placeholder="AIza...">
+    </div>
+    <button class="btn-full" onclick="initApp()">Ingresar al Panel →</button>
+  </div>
+</div>
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <div class="logo">ElhyAi <span>Chat</span></div>
+  <div style="width:1px;height:20px;background:var(--border)"></div>
+  <span style="font-size:12px;color:var(--muted)">Panel de Agentes</span>
+  <div style="display:flex;gap:14px;margin-left:auto;align-items:center">
+    <div style="font-size:12px;color:var(--muted);display:flex;gap:16px">
+      <span>🟢 <span id="stat-online">0</span> activos</span>
+      <span>🟡 <span id="stat-waiting">0</span> en espera</span>
+      <span>🤖 <span id="stat-bot">0</span> con bot</span>
+    </div>
+    <button class="notif-btn" onclick="toggleNotifs()">🔔<span class="notif-badge" id="notifBadge" style="display:none">0</span></button>
+    <div class="agent-info">
+      <div class="agent-avatar" id="avatarLetter">C</div>
+      <span id="agentNameDisplay">Agente</span>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <button class="nav-btn active" title="Conversaciones">💬</button>
+    <button class="nav-btn" title="Contactos">👥</button>
+    <button class="nav-btn" title="Campañas">📢</button>
+    <button class="nav-btn" title="Reportes">📊</button>
+    <div style="flex:1"></div>
+    <button class="nav-btn" title="Configuración">⚙️</button>
+  </div>
+
+  <!-- CONVERSATIONS -->
+  <div class="conv-panel">
+    <div class="conv-header">
+      <h2>Conversaciones</h2>
+    </div>
+    <div class="filter-tabs">
+      <button class="ftab active" onclick="filterChats('todos',this)">Todos</button>
+      <button class="ftab" onclick="filterChats('espera',this)">En espera</button>
+      <button class="ftab" onclick="filterChats('atencion',this)">Míos</button>
+      <button class="ftab" onclick="filterChats('bot',this)">Bot</button>
+    </div>
+    <div class="search-box">
+      <span class="si">🔍</span>
+      <input type="text" placeholder="Buscar..." oninput="searchChats(this.value)">
+    </div>
+    <div class="conv-list" id="convList">
+      <div style="padding:20px;text-align:center;color:var(--muted);font-size:13px">Conectando a Firebase...</div>
+    </div>
+  </div>
+
+  <!-- CHAT AREA -->
+  <div class="chat-area">
+    <div class="chat-header" id="chatHeader">
+      <div style="color:var(--muted);font-size:13px;margin:auto">← Selecciona una conversación</div>
+    </div>
+    <div class="messages" id="msgContainer">
+      <div class="empty-chat">
+        <span>💬</span>
+        <p>Selecciona una conversación para ver los mensajes</p>
+      </div>
+    </div>
+    <div class="input-area" id="inputArea" style="display:none">
+      <div class="takeover-bar" id="takeoverBar" style="display:none">
+        ⚠️ El bot está atendiendo este chat.
+        <button class="btn btn-warn" style="margin-left:auto;padding:4px 10px" onclick="takeover()">Tomar control</button>
+      </div>
+      <div class="input-row">
+        <textarea class="msg-input" id="msgInput" placeholder="Escribe tu mensaje..." rows="1" onkeydown="handleKey(event)"></textarea>
+        <button class="send-btn" onclick="sendMessage()">➤</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT PANEL -->
+  <div class="right-panel">
+    <div class="rp-sec" id="contactInfo">
+      <h4>Contacto</h4>
+      <p style="font-size:12px;color:var(--muted)">Selecciona un chat</p>
+    </div>
+    <div class="rp-sec">
+      <h4>Métricas del día</h4>
+      <div class="metric-grid">
+        <div class="metric-card"><div class="metric-val" id="m-total">0</div><div class="metric-label">Total chats</div></div>
+        <div class="metric-card"><div class="metric-val" id="m-resueltos">0</div><div class="metric-label">Resueltos</div></div>
+        <div class="metric-card"><div class="metric-val" id="m-espera">0</div><div class="metric-label">En espera</div></div>
+        <div class="metric-card"><div class="metric-val" id="m-bot">0</div><div class="metric-label">Por bot</div></div>
+      </div>
+    </div>
+    <div class="rp-sec">
+      <h4>Acciones rápidas</h4>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <button class="btn btn-success" style="width:100%" onclick="resolveChat()">✓ Resolver chat</button>
+        <button class="btn btn-ghost" style="width:100%" onclick="transferBot()">🤖 Devolver al bot</button>
+        <button class="btn btn-danger" style="width:100%" onclick="blockContact()">🚫 Bloquear</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"><span id="toastMsg">OK</span></div>
+
+<script>
+// ─── ESTADO GLOBAL ───────────────────────────────────────────────
+let db, currentPhone = null, agentName = "", backendUrl = "", filter = "todos", allChats = {};
+
+// ─── INICIALIZAR APP ─────────────────────────────────────────────
+function initApp() {
+  agentName   = document.getElementById('agentName').value || "Agente";
+  backendUrl  = document.getElementById('backendUrl').value || "http://localhost:3000";
+  const fbUrl = document.getElementById('firebaseUrl').value;
+  const fbKey = document.getElementById('firebaseKey').value;
+
+  if (!fbUrl) { alert("Ingresa la URL de Firebase"); return; }
+
+  // Inicializar Firebase
+  try {
+    const app = firebase.initializeApp({
+      apiKey: fbKey || "demo",
+      databaseURL: fbUrl,
+    });
+    db = firebase.database();
+  } catch(e) {
+    if (e.code === 'app/duplicate-app') {
+      db = firebase.database();
+    } else {
+      alert("Error Firebase: " + e.message); return;
+    }
+  }
+
+  document.getElementById('loginModal').style.display = 'none';
+  document.getElementById('agentNameDisplay').textContent = agentName;
+  document.getElementById('avatarLetter').textContent = agentName[0].toUpperCase();
+
+  listenChats();
+  listenNotifications();
+}
+
+// ─── ESCUCHAR CHATS EN TIEMPO REAL ───────────────────────────────
+function listenChats() {
+  db.ref('chats').on('value', snap => {
+    allChats = snap.val() || {};
+    renderChats(allChats);
+    updateMetrics(allChats);
+  });
+}
+
+function renderChats(chats) {
+  const list = document.getElementById('convList');
+
+  let entries = Object.entries(chats);
+
+  // Filtrar
+  if (filter === 'espera') entries = entries.filter(([,c]) => c.estado === 'en_espera');
+  else if (filter === 'atencion') entries = entries.filter(([,c]) => c.agente_activo === agentName);
+  else if (filter === 'bot') entries = entries.filter(([,c]) => !c.agente_activo && c.estado !== 'en_espera');
+
+  if (entries.length === 0) {
+    list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px">No hay conversaciones</div>';
+    return;
+  }
+
+  // Ordenar por última hora
+  entries.sort((a,b) => new Date(b[1].ultima_hora||0) - new Date(a[1].ultima_hora||0));
+
+  list.innerHTML = entries.map(([phone, chat]) => {
+    const estado = chat.estado || 'bot';
+    const badgeClass = estado === 'en_espera' ? 'badge-espera' : estado === 'en_atencion' ? 'badge-atencion' : 'badge-bot';
+    const badgeText = estado === 'en_espera' ? '⚡ Espera' : estado === 'en_atencion' ? '👤 Agente' : '🤖 Bot';
+    const inicial = (chat.phone || phone).toString().slice(-4);
+    const hora = chat.ultima_hora ? new Date(chat.ultima_hora).toLocaleTimeString('es-EC',{hour:'2-digit',minute:'2-digit'}) : '';
+    const activeClass = phone === currentPhone ? 'active' : estado === 'en_espera' ? 'espera' : '';
+
+    return `<div class="conv-item ${activeClass}" onclick="selectChat('${phone}')">
+      <div class="conv-avatar">${inicial}</div>
+      <div class="conv-body">
+        <div class="conv-top">
+          <div class="conv-name">+${phone}</div>
+          <div class="conv-time">${hora}</div>
+        </div>
+        <div class="conv-preview">${chat.ultimo_mensaje || 'Sin mensajes'}</div>
+      </div>
+      <span class="estado-badge ${badgeClass}">${badgeText}</span>
+    </div>`;
+  }).join('');
+}
+
+// ─── SELECCIONAR CHAT ────────────────────────────────────────────
+function selectChat(phone) {
+  currentPhone = phone;
+  renderChats(allChats);
+
+  const chat = allChats[phone] || {};
+  const tieneAgente = !!chat.agente_activo;
+
+  // Header
+  document.getElementById('chatHeader').innerHTML = `
+    <div class="chat-avatar">${phone.toString().slice(-2)}</div>
+    <div class="chat-info">
+      <h3>+${phone}</h3>
+      <p>WhatsApp · ${tieneAgente ? '👤 Agente: '+chat.agente_activo : '🤖 Atendido por bot'}</p>
+    </div>
+    <div class="chat-actions">
+      <button class="btn btn-success" onclick="resolveChat()">✓ Resolver</button>
+      <button class="btn btn-ghost" onclick="transferBot()">🤖 Al bot</button>
+    </div>`;
+
+  document.getElementById('inputArea').style.display = 'block';
+
+  // Mostrar barra de takeover si lo maneja el bot
+  const tb = document.getElementById('takeoverBar');
+  tb.style.display = tieneAgente ? 'none' : 'flex';
+
+  // Info del contacto
+  document.getElementById('contactInfo').innerHTML = `
+    <h4>Contacto</h4>
+    <div class="info-row"><span>Número</span><span>+${phone}</span></div>
+    <div class="info-row"><span>Estado</span><span>${chat.estado || 'activo'}</span></div>
+    <div class="info-row"><span>Agente</span><span>${chat.agente_activo || 'Bot'}</span></div>`;
+
+  // Escuchar mensajes en tiempo real
+  db.ref(`chats/${phone}/mensajes`).off();
+  db.ref(`chats/${phone}/mensajes`).on('value', snap => {
+    if (currentPhone !== phone) return;
+    renderMessages(snap.val() || {});
+  });
+
+  // Marcar como leído
+  db.ref(`chats/${phone}/ultimo_mensaje_leido`).set(true);
+}
+
+function renderMessages(msgs) {
+  const container = document.getElementById('msgContainer');
+  const entries = Object.values(msgs).sort((a,b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+  if (entries.length === 0) {
+    container.innerHTML = '<div class="empty-chat"><span>💬</span><p>Sin mensajes aún</p></div>';
+    return;
+  }
+
+  container.innerHTML = '<div class="date-sep">Conversación</div>' +
+    entries.map(m => {
+      const isOut = m.role === 'agente' || m.role === 'bot';
+      const bubbleClass = m.role === 'bot' ? 'bot-bubble' : '';
+      const label = m.role === 'cliente' ? 'Cliente' :
+                    m.role === 'bot' ? '🤖 ElhyBot' :
+                    `👤 ${m.agentName || agentName}`;
+      return `<div class="msg-group ${isOut ? 'outgoing' : 'incoming'}">
+        <div class="msg-sender-label">${label} · ${m.hora || ''}</div>
+        <div class="bubble ${bubbleClass}">${m.text}</div>
+      </div>`;
+    }).join('');
+
+  container.scrollTop = container.scrollHeight;
+}
+
+// ─── ENVIAR MENSAJE ──────────────────────────────────────────────
+async function sendMessage() {
+  if (!currentPhone) { showToast('⚠️ Selecciona un chat primero'); return; }
+  const input = document.getElementById('msgInput');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+
+  try {
+    const res = await fetch(`${backendUrl}/api/agent/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ to: currentPhone, message: text, agentName })
+    });
+    if (!res.ok) throw new Error('Error enviando');
+    showToast('✅ Mensaje enviado');
+  } catch(e) {
+    showToast('❌ Error: ' + e.message);
+  }
+}
+
+function handleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+}
+
+// ─── ACCIONES ────────────────────────────────────────────────────
+async function resolveChat() {
+  if (!currentPhone) return;
+  try {
+    await fetch(`${backendUrl}/api/agent/resolve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: currentPhone })
+    });
+    showToast('🎉 Chat resuelto');
+    currentPhone = null;
+    document.getElementById('chatHeader').innerHTML = '<div style="color:var(--muted);font-size:13px;margin:auto">← Selecciona una conversación</div>';
+    document.getElementById('inputArea').style.display = 'none';
+    document.getElementById('msgContainer').innerHTML = '<div class="empty-chat"><span>💬</span><p>Selecciona una conversación</p></div>';
+  } catch(e) { showToast('❌ ' + e.message); }
+}
+
+function takeover() {
+  if (!currentPhone) return;
+  db.ref(`chats/${currentPhone}/agente_activo`).set(agentName);
+  db.ref(`chats/${currentPhone}/estado`).set('en_atencion');
+  document.getElementById('takeoverBar').style.display = 'none';
+  showToast('👤 Tomaste control del chat');
+}
+
+function transferBot() {
+  if (!currentPhone) return;
+  db.ref(`chats/${currentPhone}/agente_activo`).remove();
+  db.ref(`chats/${currentPhone}/estado`).set('activo');
+  document.getElementById('takeoverBar').style.display = 'flex';
+  showToast('🤖 Chat devuelto al bot');
+}
+
+function blockContact() {
+  if (!currentPhone) return;
+  if (confirm(`¿Bloquear a +${currentPhone}?`)) {
+    db.ref(`chats/${currentPhone}/bloqueado`).set(true);
+    db.ref(`chats/${currentPhone}/estado`).set('bloqueado');
+    showToast('🚫 Contacto bloqueado');
+  }
+}
+
+// ─── NOTIFICACIONES ──────────────────────────────────────────────
+let notifCount = 0;
+function listenNotifications() {
+  db.ref('notificaciones').orderByChild('leido').equalTo(false).on('value', snap => {
+    const n = snap.val() || {};
+    notifCount = Object.keys(n).length;
+    const badge = document.getElementById('notifBadge');
+    if (notifCount > 0) {
+      badge.style.display = 'flex';
+      badge.textContent = notifCount;
+      document.getElementById('stat-waiting').textContent = notifCount;
+    } else {
+      badge.style.display = 'none';
+    }
+  });
+}
+
+function toggleNotifs() {
+  if (notifCount > 0) {
+    db.ref('notificaciones').once('value', snap => {
+      const updates = {};
+      Object.keys(snap.val() || {}).forEach(k => updates[`notificaciones/${k}/leido`] = true);
+      db.ref().update(updates);
+    });
+    showToast('🔔 Notificaciones marcadas como leídas');
+  }
+}
+
+// ─── FILTROS ─────────────────────────────────────────────────────
+function filterChats(f, el) {
+  filter = f;
+  document.querySelectorAll('.ftab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  renderChats(allChats);
+}
+
+function searchChats(q) {
+  const filtered = {};
+  Object.entries(allChats).forEach(([phone, chat]) => {
+    if (phone.includes(q) || (chat.ultimo_mensaje||'').toLowerCase().includes(q.toLowerCase())) {
+      filtered[phone] = chat;
+    }
+  });
+  renderChats(filtered);
+}
+
+// ─── MÉTRICAS ────────────────────────────────────────────────────
+function updateMetrics(chats) {
+  const arr = Object.values(chats);
+  const total = arr.length;
+  const resueltos = arr.filter(c => c.estado === 'resuelto').length;
+  const espera = arr.filter(c => c.estado === 'en_espera').length;
+  const bot = arr.filter(c => !c.agente_activo && c.estado !== 'resuelto').length;
+  const online = arr.filter(c => c.agente_activo).length;
+
+  document.getElementById('m-total').textContent = total;
+  document.getElementById('m-resueltos').textContent = resueltos;
+  document.getElementById('m-espera').textContent = espera;
+  document.getElementById('m-bot').textContent = bot;
+  document.getElementById('stat-online').textContent = online;
+  document.getElementById('stat-bot').textContent = bot;
+}
+
+// ─── UTILIDADES ──────────────────────────────────────────────────
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  document.getElementById('toastMsg').textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+document.querySelectorAll('.nav-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  });
+});
+</script>
+</body>
+</html>

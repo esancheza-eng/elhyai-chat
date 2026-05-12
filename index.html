@@ -1,0 +1,924 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ElhyAi Chat — Campañas Masivas</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root {
+  --bg: #0d0f1a;
+  --panel: #13162a;
+  --surface: #1a1e35;
+  --border: #252a45;
+  --accent: #6c63ff;
+  --accent2: #00d4aa;
+  --accent3: #ff6b6b;
+  --warn: #ffd166;
+  --text: #e8eaf6;
+  --muted: #6b7299;
+  --wa: #25D366;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
+
+/* TOPBAR */
+.topbar { height:52px; background:var(--panel); border-bottom:1px solid var(--border); display:flex; align-items:center; padding:0 24px; gap:16px; position:sticky; top:0; z-index:50; }
+.logo { font-family:'Syne',sans-serif; font-weight:800; font-size:18px; color:var(--accent); }
+.logo span { color:var(--accent2); }
+.back-btn { background:var(--surface); border:1px solid var(--border); color:var(--text); padding:5px 12px; border-radius:8px; font-size:12px; cursor:pointer; font-family:'DM Sans',sans-serif; }
+.back-btn:hover { border-color:var(--accent); }
+
+/* LAYOUT */
+.container { max-width:1100px; margin:0 auto; padding:28px 20px; display:grid; grid-template-columns:1fr 380px; gap:24px; }
+
+/* CARDS */
+.card { background:var(--panel); border:1px solid var(--border); border-radius:16px; overflow:hidden; }
+.card-header { padding:16px 20px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:10px; }
+.card-header h2 { font-family:'Syne',sans-serif; font-size:15px; font-weight:700; }
+.card-header .badge { font-size:11px; padding:3px 9px; border-radius:20px; font-weight:600; }
+.card-body { padding:20px; }
+
+/* STEP INDICATOR */
+.steps { display:flex; align-items:center; gap:0; margin-bottom:28px; }
+.step { display:flex; align-items:center; gap:8px; flex:1; }
+.step-num { width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; flex-shrink:0; background:var(--border); color:var(--muted); transition:all 0.3s; }
+.step.active .step-num { background:var(--accent); color:white; }
+.step.done .step-num { background:var(--accent2); color:#0d0f1a; }
+.step-label { font-size:11px; color:var(--muted); font-weight:500; }
+.step.active .step-label { color:var(--text); }
+.step-line { flex:1; height:2px; background:var(--border); margin:0 8px; transition:background 0.3s; }
+.step-line.done { background:var(--accent2); }
+
+/* SECTIONS */
+.section { display:none; }
+.section.active { display:block; animation:fadeIn 0.3s ease; }
+@keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+
+/* UPLOAD ZONE */
+.upload-zone { border:2px dashed var(--border); border-radius:12px; padding:40px 20px; text-align:center; cursor:pointer; transition:all 0.2s; position:relative; }
+.upload-zone:hover, .upload-zone.drag { border-color:var(--accent); background:rgba(108,99,255,0.05); }
+.upload-zone input { position:absolute; inset:0; opacity:0; cursor:pointer; }
+.upload-icon { font-size:36px; margin-bottom:10px; }
+.upload-title { font-family:'Syne',sans-serif; font-size:15px; font-weight:700; margin-bottom:6px; }
+.upload-sub { font-size:12px; color:var(--muted); }
+
+/* FORMAT HINT */
+.format-hint { background:var(--surface); border-radius:10px; padding:14px; margin-top:14px; }
+.format-hint h4 { font-size:12px; font-weight:600; color:var(--accent2); margin-bottom:8px; }
+.col-list { display:flex; flex-wrap:wrap; gap:6px; }
+.col-tag { font-size:11px; padding:3px 8px; border-radius:6px; }
+.col-required { background:rgba(108,99,255,0.2); color:var(--accent); }
+.col-optional { background:rgba(107,114,153,0.2); color:var(--muted); }
+
+/* TABLE */
+.table-wrap { overflow-x:auto; border-radius:10px; border:1px solid var(--border); }
+table { width:100%; border-collapse:collapse; font-size:12px; }
+thead { background:var(--surface); }
+th { padding:10px 12px; text-align:left; font-weight:600; color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid var(--border); }
+td { padding:9px 12px; border-bottom:1px solid rgba(37,42,69,0.5); }
+tr:last-child td { border-bottom:none; }
+tr:hover td { background:rgba(108,99,255,0.05); }
+.td-phone { font-family:monospace; color:var(--accent2); }
+.td-name { font-weight:500; }
+.td-amount { color:var(--warn); font-weight:600; }
+.td-status { }
+.status-pill { font-size:10px; padding:2px 8px; border-radius:10px; font-weight:600; }
+.s-pending { background:rgba(107,114,153,0.2); color:var(--muted); }
+.s-sent { background:rgba(0,212,170,0.2); color:var(--accent2); }
+.s-failed { background:rgba(255,107,107,0.2); color:var(--accent3); }
+.s-sending { background:rgba(108,99,255,0.2); color:var(--accent); }
+
+/* TEMPLATES */
+.template-grid { display:flex; flex-direction:column; gap:10px; }
+.template-card { border:2px solid var(--border); border-radius:12px; padding:14px; cursor:pointer; transition:all 0.2s; position:relative; }
+.template-card:hover { border-color:var(--accent); background:rgba(108,99,255,0.05); }
+.template-card.selected { border-color:var(--accent); background:rgba(108,99,255,0.08); }
+.template-card.selected::after { content:'✓'; position:absolute; top:12px; right:14px; background:var(--accent); color:white; width:20px; height:20px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; }
+.tpl-name { font-family:'Syne',sans-serif; font-size:13px; font-weight:700; margin-bottom:4px; display:flex; align-items:center; gap:6px; }
+.tpl-tone { font-size:10px; padding:2px 7px; border-radius:5px; font-weight:600; }
+.tone-amable { background:rgba(0,212,170,0.2); color:var(--accent2); }
+.tone-formal { background:rgba(108,99,255,0.2); color:var(--accent); }
+.tone-urgente { background:rgba(255,107,107,0.2); color:var(--accent3); }
+.tone-legal { background:rgba(255,209,102,0.2); color:var(--warn); }
+.tpl-preview { font-size:12px; color:var(--muted); line-height:1.6; margin-top:6px; background:var(--surface); padding:10px; border-radius:8px; }
+.tpl-preview .var { color:var(--accent2); font-weight:600; }
+
+/* FORM */
+.form-group { margin-bottom:14px; }
+.form-group label { display:block; font-size:11px; color:var(--muted); margin-bottom:5px; font-weight:500; text-transform:uppercase; letter-spacing:0.5px; }
+.form-group input, .form-group select, .form-group textarea {
+  width:100%; background:var(--surface); border:1px solid var(--border); border-radius:10px;
+  padding:10px 14px; font-size:13px; color:var(--text); font-family:'DM Sans',sans-serif; outline:none; transition:border-color 0.2s;
+}
+.form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color:var(--accent); }
+.form-group textarea { resize:vertical; min-height:80px; line-height:1.5; }
+select option { background:var(--surface); }
+.row2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+
+/* PREVIEW BUBBLE */
+.wa-preview { background:#0b141a; border-radius:12px; padding:16px; }
+.wa-header { display:flex; align-items:center; gap:8px; margin-bottom:12px; padding-bottom:10px; border-bottom:1px solid #1f2c34; }
+.wa-avatar { width:36px; height:36px; border-radius:50%; background:var(--wa); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:14px; }
+.wa-name { font-size:13px; font-weight:600; color:#e9edef; }
+.wa-status { font-size:11px; color:#8696a0; }
+.wa-bubble { background:#005c4b; border-radius:12px 12px 3px 12px; padding:10px 14px; font-size:13px; line-height:1.6; color:#e9edef; max-width:90%; position:relative; }
+.wa-time { font-size:10px; color:#8696a0; text-align:right; margin-top:4px; }
+.var-highlight { color:#00d4aa; font-weight:600; }
+
+/* BUTTONS */
+.btn { padding:10px 20px; border-radius:10px; font-size:13px; font-weight:600; cursor:pointer; border:none; font-family:'Syne',sans-serif; transition:all 0.2s; display:inline-flex; align-items:center; gap:7px; }
+.btn:hover { opacity:0.88; transform:translateY(-1px); }
+.btn-primary { background:var(--accent); color:white; }
+.btn-success { background:var(--accent2); color:#0d0f1a; }
+.btn-warn { background:var(--warn); color:#0d0f1a; }
+.btn-ghost { background:var(--surface); color:var(--text); border:1px solid var(--border); }
+.btn-danger { background:var(--accent3); color:white; }
+.btn-full { width:100%; justify-content:center; }
+.btn-lg { padding:13px 24px; font-size:14px; }
+
+/* PROGRESS */
+.progress-section { display:none; }
+.progress-section.active { display:block; }
+.big-counter { font-family:'Syne',sans-serif; font-size:56px; font-weight:800; background:linear-gradient(135deg,var(--accent),var(--accent2)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; text-align:center; line-height:1; }
+.counter-label { text-align:center; font-size:13px; color:var(--muted); margin-top:4px; margin-bottom:20px; }
+.prog-bar-wrap { background:var(--border); border-radius:8px; height:10px; overflow:hidden; margin-bottom:8px; }
+.prog-bar-fill { height:100%; background:linear-gradient(90deg,var(--accent),var(--accent2)); border-radius:8px; transition:width 0.5s ease; }
+.prog-stats { display:flex; justify-content:space-between; font-size:12px; }
+.log-box { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:12px; height:160px; overflow-y:auto; font-size:11px; font-family:monospace; margin-top:14px; }
+.log-box::-webkit-scrollbar { width:3px; }
+.log-box::-webkit-scrollbar-thumb { background:var(--border); }
+.log-ok { color:var(--accent2); }
+.log-err { color:var(--accent3); }
+.log-info { color:var(--muted); }
+
+/* SUMMARY CARDS */
+.summary-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:20px; }
+.sum-card { background:var(--surface); border-radius:12px; padding:14px; text-align:center; border:1px solid var(--border); }
+.sum-val { font-family:'Syne',sans-serif; font-size:24px; font-weight:800; }
+.sum-label { font-size:11px; color:var(--muted); margin-top:3px; }
+.v-enviados { color:var(--accent2); }
+.v-fallidos { color:var(--accent3); }
+.v-pendientes { color:var(--muted); }
+.v-total { color:var(--accent); }
+
+/* RIGHT SIDEBAR */
+.sidebar-right { display:flex; flex-direction:column; gap:16px; }
+.config-section { }
+
+/* SPEED CONTROL */
+.speed-opts { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.speed-opt { border:2px solid var(--border); border-radius:10px; padding:10px; cursor:pointer; text-align:center; transition:all 0.2s; }
+.speed-opt:hover { border-color:var(--accent); }
+.speed-opt.selected { border-color:var(--accent); background:rgba(108,99,255,0.08); }
+.speed-opt .s-name { font-size:12px; font-weight:600; margin-bottom:2px; }
+.speed-opt .s-rate { font-size:11px; color:var(--muted); }
+
+/* SCHEDULE */
+.schedule-toggle { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+.toggle-sw { width:36px; height:20px; background:var(--border); border-radius:10px; cursor:pointer; position:relative; transition:background 0.2s; border:none; }
+.toggle-sw.on { background:var(--accent2); }
+.toggle-sw::after { content:''; position:absolute; top:2px; left:2px; width:16px; height:16px; background:white; border-radius:50%; transition:left 0.2s; }
+.toggle-sw.on::after { left:18px; }
+
+/* TOAST */
+.toast { position:fixed; bottom:24px; right:24px; background:var(--surface); border:1px solid var(--border); border-left:3px solid var(--accent2); border-radius:10px; padding:12px 18px; font-size:13px; z-index:200; transform:translateX(130%); transition:transform 0.4s cubic-bezier(0.34,1.56,0.64,1); display:flex; align-items:center; gap:10px; max-width:300px; }
+.toast.show { transform:translateX(0); }
+
+/* NAVIGATION BUTTONS */
+.nav-btns { display:flex; justify-content:space-between; margin-top:20px; padding-top:16px; border-top:1px solid var(--border); }
+</style>
+</head>
+<body>
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <div class="logo">ElhyAi <span>Chat</span></div>
+  <div style="width:1px;height:20px;background:var(--border)"></div>
+  <span style="font-size:13px;color:var(--muted)">📢 Campañas Masivas</span>
+  <button class="back-btn" style="margin-left:auto" onclick="window.history.back()">← Panel de Agentes</button>
+</div>
+
+<div class="container">
+
+  <!-- MAIN CONTENT -->
+  <div>
+
+    <!-- STEPS -->
+    <div class="steps" id="stepsBar">
+      <div class="step active" id="step1">
+        <div class="step-num">1</div>
+        <div class="step-label">Cargar Excel</div>
+      </div>
+      <div class="step-line" id="line1"></div>
+      <div class="step" id="step2">
+        <div class="step-num">2</div>
+        <div class="step-label">Plantilla</div>
+      </div>
+      <div class="step-line" id="line2"></div>
+      <div class="step" id="step3">
+        <div class="step-num">3</div>
+        <div class="step-label">Revisar</div>
+      </div>
+      <div class="step-line" id="line3"></div>
+      <div class="step" id="step4">
+        <div class="step-num">4</div>
+        <div class="step-label">Enviar</div>
+      </div>
+    </div>
+
+    <!-- SECTION 1: CARGAR EXCEL -->
+    <div class="card section active" id="sec1">
+      <div class="card-header">
+        <span style="font-size:20px">📊</span>
+        <h2>Cargar lista de clientes</h2>
+        <span class="badge" style="background:rgba(108,99,255,0.2);color:var(--accent)">Paso 1</span>
+      </div>
+      <div class="card-body">
+
+        <div class="upload-zone" id="uploadZone">
+          <input type="file" accept=".xlsx,.xls,.csv" onchange="loadFile(this)">
+          <div class="upload-icon">📂</div>
+          <div class="upload-title">Arrastra tu Excel aquí</div>
+          <div class="upload-sub">o haz click para seleccionar · .xlsx / .xls / .csv</div>
+        </div>
+
+        <div class="format-hint">
+          <h4>📋 Columnas requeridas en tu Excel:</h4>
+          <div class="col-list">
+            <span class="col-tag col-required">telefono</span>
+            <span class="col-tag col-required">nombre</span>
+            <span class="col-tag col-required">deuda</span>
+            <span class="col-tag col-optional">vencimiento</span>
+            <span class="col-tag col-optional">cedula</span>
+            <span class="col-tag col-optional">dias_mora</span>
+            <span class="col-tag col-optional">asesor</span>
+          </div>
+          <div style="margin-top:10px;font-size:11px;color:var(--muted)">
+            ✅ Requeridas &nbsp;|&nbsp; <span style="color:var(--muted)">Opcionales</span> — El teléfono debe incluir código de país (593XXXXXXXXX)
+          </div>
+        </div>
+
+        <!-- DEMO DATA BUTTON -->
+        <button class="btn btn-ghost" style="margin-top:14px;font-size:12px" onclick="loadDemoData()">
+          🎯 Cargar datos de ejemplo (demo)
+        </button>
+
+        <!-- TABLE PREVIEW -->
+        <div id="tableWrap" style="display:none;margin-top:18px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+            <div style="font-size:13px;font-weight:600">
+              Vista previa: <span id="totalRows" style="color:var(--accent2)">0</span> contactos cargados
+            </div>
+            <button class="btn btn-ghost" style="font-size:11px;padding:5px 10px" onclick="clearData()">✕ Limpiar</button>
+          </div>
+          <div class="table-wrap">
+            <table id="previewTable">
+              <thead><tr id="tableHead"></tr></thead>
+              <tbody id="tableBody"></tbody>
+            </table>
+          </div>
+          <div class="nav-btns">
+            <div></div>
+            <button class="btn btn-primary" onclick="goStep(2)">Continuar → Elegir Plantilla</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- SECTION 2: PLANTILLA -->
+    <div class="card section" id="sec2">
+      <div class="card-header">
+        <span style="font-size:20px">📝</span>
+        <h2>Selecciona la plantilla del mensaje</h2>
+        <span class="badge" style="background:rgba(108,99,255,0.2);color:var(--accent)">Paso 2</span>
+      </div>
+      <div class="card-body">
+        <div class="template-grid" id="templateGrid"></div>
+
+        <!-- CUSTOM TEMPLATE -->
+        <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
+          <div style="font-size:13px;font-weight:600;margin-bottom:10px;display:flex;align-items:center;gap:6px">
+            ✏️ O escribe una plantilla personalizada
+          </div>
+          <div class="form-group">
+            <label>Tu mensaje personalizado</label>
+            <textarea id="customTemplate" placeholder="Ej: Estimado {nombre}, su deuda de ${deuda} vence el {vencimiento}. Comuníquese al 04-XXXX." rows="4"></textarea>
+          </div>
+          <div style="font-size:11px;color:var(--muted)">
+            Variables disponibles: <span style="color:var(--accent2)">{nombre}</span> <span style="color:var(--accent2)">{deuda}</span> <span style="color:var(--accent2)">{vencimiento}</span> <span style="color:var(--accent2)">{cedula}</span> <span style="color:var(--accent2)">{dias_mora}</span> <span style="color:var(--accent2)">{telefono}</span>
+          </div>
+        </div>
+
+        <div class="nav-btns">
+          <button class="btn btn-ghost" onclick="goStep(1)">← Atrás</button>
+          <button class="btn btn-primary" onclick="goStep(3)">Continuar → Revisar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- SECTION 3: REVISAR -->
+    <div class="card section" id="sec3">
+      <div class="card-header">
+        <span style="font-size:20px">👁️</span>
+        <h2>Revisar antes de enviar</h2>
+        <span class="badge" style="background:rgba(255,209,102,0.2);color:var(--warn)">Paso 3</span>
+      </div>
+      <div class="card-body">
+
+        <div class="summary-grid">
+          <div class="sum-card"><div class="sum-val v-total" id="rev-total">0</div><div class="sum-label">Total contactos</div></div>
+          <div class="sum-card"><div class="sum-val" style="color:var(--warn)" id="rev-cost">$0.00</div><div class="sum-label">Costo estimado</div></div>
+          <div class="sum-card"><div class="sum-val" style="color:var(--accent2)" id="rev-tiempo">0 min</div><div class="sum-label">Tiempo estimado</div></div>
+          <div class="sum-card"><div class="sum-val" style="color:var(--accent)" id="rev-plantilla">—</div><div class="sum-label">Plantilla</div></div>
+        </div>
+
+        <div style="margin-bottom:16px">
+          <div style="font-size:13px;font-weight:600;margin-bottom:10px">📱 Vista previa del mensaje (primer contacto):</div>
+          <div class="wa-preview">
+            <div class="wa-header">
+              <div class="wa-avatar">M</div>
+              <div>
+                <div class="wa-name">Marcimex Milagro</div>
+                <div class="wa-status">en línea</div>
+              </div>
+            </div>
+            <div class="wa-bubble" id="msgPreview">Cargando vista previa...</div>
+            <div class="wa-time">ahora ✓✓</div>
+          </div>
+        </div>
+
+        <div style="background:rgba(255,209,102,0.08);border:1px solid rgba(255,209,102,0.25);border-radius:10px;padding:14px;font-size:12px;color:var(--warn);line-height:1.7">
+          ⚠️ <strong>Importante:</strong> Verifica que tu plantilla esté <strong>aprobada por Meta</strong> antes de enviar masivamente. 
+          Envíos sin plantilla aprobada pueden resultar en restricción de tu número de WhatsApp.
+          Para uso interno/demo puedes continuar.
+        </div>
+
+        <div class="nav-btns">
+          <button class="btn btn-ghost" onclick="goStep(2)">← Atrás</button>
+          <button class="btn btn-success btn-lg" onclick="goStep(4)">🚀 Iniciar Campaña</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- SECTION 4: ENVIANDO -->
+    <div class="card section" id="sec4">
+      <div class="card-header">
+        <span style="font-size:20px">📤</span>
+        <h2>Campaña en progreso</h2>
+        <span class="badge" id="campBadge" style="background:rgba(108,99,255,0.2);color:var(--accent)">Enviando...</span>
+      </div>
+      <div class="card-body">
+
+        <div class="summary-grid" style="margin-bottom:20px">
+          <div class="sum-card"><div class="sum-val v-enviados" id="cnt-sent">0</div><div class="sum-label">✅ Enviados</div></div>
+          <div class="sum-card"><div class="sum-val v-fallidos" id="cnt-failed">0</div><div class="sum-label">❌ Fallidos</div></div>
+          <div class="sum-card"><div class="sum-val v-pendientes" id="cnt-pending">0</div><div class="sum-label">⏳ Pendientes</div></div>
+          <div class="sum-card"><div class="sum-val v-total" id="cnt-total">0</div><div class="sum-label">Total</div></div>
+        </div>
+
+        <div class="big-counter" id="bigPct">0%</div>
+        <div class="counter-label" id="bigLabel">Preparando envío...</div>
+
+        <div class="prog-bar-wrap">
+          <div class="prog-bar-fill" id="progFill" style="width:0%"></div>
+        </div>
+        <div class="prog-stats">
+          <span style="font-size:11px;color:var(--muted)" id="progLeft">0 restantes</span>
+          <span style="font-size:11px;color:var(--muted)" id="progSpeed">— msg/min</span>
+        </div>
+
+        <div class="log-box" id="logBox">
+          <div class="log-info">Iniciando campaña ElhyAi Chat...</div>
+        </div>
+
+        <div style="display:flex;gap:10px;margin-top:14px">
+          <button class="btn btn-warn" id="pauseBtn" onclick="togglePause()">⏸ Pausar</button>
+          <button class="btn btn-danger" onclick="stopCampaign()">⏹ Detener</button>
+          <button class="btn btn-ghost" id="exportBtn" style="margin-left:auto;display:none" onclick="exportResults()">📥 Exportar resultados</button>
+        </div>
+
+        <!-- RESULTS TABLE -->
+        <div id="resultsWrap" style="display:none;margin-top:20px">
+          <div style="font-size:13px;font-weight:600;margin-bottom:10px">📋 Resultados detallados:</div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Teléfono</th><th>Nombre</th><th>Deuda</th><th>Estado</th><th>Hora</th></tr></thead>
+              <tbody id="resultsBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+  <!-- SIDEBAR RIGHT -->
+  <div class="sidebar-right">
+
+    <!-- CONFIG BACKEND -->
+    <div class="card">
+      <div class="card-header">
+        <span>⚙️</span>
+        <h2>Configuración</h2>
+      </div>
+      <div class="card-body">
+        <div class="form-group">
+          <label>URL del Backend</label>
+          <input type="text" id="cfg-backend" value="http://localhost:3000" placeholder="https://api.elhyai.com">
+        </div>
+        <div class="form-group">
+          <label>Nombre del remitente</label>
+          <input type="text" id="cfg-sender" value="Marcimex Milagro">
+        </div>
+        <div class="form-group">
+          <label>Campaña / Nombre</label>
+          <input type="text" id="cfg-campname" value="Recordatorio Mayo 2026">
+        </div>
+      </div>
+    </div>
+
+    <!-- VELOCIDAD -->
+    <div class="card">
+      <div class="card-header">
+        <span>⚡</span>
+        <h2>Velocidad de envío</h2>
+      </div>
+      <div class="card-body">
+        <div class="speed-opts">
+          <div class="speed-opt selected" onclick="setSpeed(this,3000)" data-delay="3000">
+            <div class="s-name">🐢 Segura</div>
+            <div class="s-rate">20 msg/min</div>
+          </div>
+          <div class="speed-opt" onclick="setSpeed(this,2000)" data-delay="2000">
+            <div class="s-name">🚗 Normal</div>
+            <div class="s-rate">30 msg/min</div>
+          </div>
+          <div class="speed-opt" onclick="setSpeed(this,1500)" data-delay="1500">
+            <div class="s-name">🏎️ Rápida</div>
+            <div class="s-rate">40 msg/min</div>
+          </div>
+          <div class="speed-opt" onclick="setSpeed(this,1000)" data-delay="1000">
+            <div class="s-name">🚀 Máxima</div>
+            <div class="s-rate">60 msg/min</div>
+          </div>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:10px">
+          💡 Se recomienda velocidad "Segura" para evitar restricciones de Meta
+        </div>
+      </div>
+    </div>
+
+    <!-- HORARIO -->
+    <div class="card">
+      <div class="card-header">
+        <span>🕐</span>
+        <h2>Programar envío</h2>
+      </div>
+      <div class="card-body">
+        <div class="schedule-toggle">
+          <button class="toggle-sw" id="schedToggle" onclick="toggleSchedule(this)"></button>
+          <span style="font-size:13px">Programar para después</span>
+        </div>
+        <div id="schedFields" style="display:none">
+          <div class="form-group">
+            <label>Fecha y hora</label>
+            <input type="datetime-local" id="schedDate">
+          </div>
+          <div style="font-size:11px;color:var(--muted)">Hora Ecuador (GMT-5)</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MINI STATS -->
+    <div class="card">
+      <div class="card-header">
+        <span>📊</span>
+        <h2>Campañas anteriores</h2>
+      </div>
+      <div class="card-body" id="prevCampaigns">
+        <div style="font-size:12px;color:var(--muted);text-align:center;padding:10px">
+          No hay campañas anteriores
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"><span id="toastMsg">OK</span></div>
+
+<script>
+// ─── ESTADO ──────────────────────────────────────────────────────
+let contacts = [], selectedTemplate = null, sendDelay = 3000;
+let sendInterval = null, paused = false, stopped = false;
+let sentCount = 0, failedCount = 0, results = [];
+let currentStep = 1;
+
+// ─── PLANTILLAS ──────────────────────────────────────────────────
+const templates = [
+  {
+    id: 'amable',
+    name: 'Recordatorio Amable',
+    tone: 'amable',
+    toneLabel: '😊 Amable',
+    msg: `Hola {nombre} 👋, le saludamos de *Marcimex Milagro*.\n\nLe recordamos que tiene un saldo pendiente de *$${'{deuda}'}* con fecha de vencimiento el *{vencimiento}*.\n\nPuede acercarse a cualquiera de nuestras sucursales o escribirnos para coordinar su pago. ¡Gracias por su confianza! 🙏`
+  },
+  {
+    id: 'formal',
+    name: 'Aviso Formal',
+    tone: 'formal',
+    toneLabel: '📋 Formal',
+    msg: `Estimado/a *{nombre}*,\n\nPor medio del presente mensaje, *Marcimex S.A.* le notifica que registra una obligación pendiente de pago por el valor de *$${'{deuda}'}*, con vencimiento el *{vencimiento}*.\n\nLe solicitamos gestionar su pago a la brevedad posible. Para consultas: 📞 04-XXXXXXX`
+  },
+  {
+    id: 'urgente',
+    name: 'Cobro Urgente',
+    tone: 'urgente',
+    toneLabel: '⚡ Urgente',
+    msg: `⚠️ *AVISO IMPORTANTE* ⚠️\n\n{nombre}, su cuenta presenta *{dias_mora} días de mora* con un saldo de *$${'{deuda}'}*.\n\nPara evitar cargos adicionales y gestiones de cobro, realice su pago *HOY*.\n\n📞 Contáctenos: 04-XXXXXXX\n*Marcimex Milagro*`
+  },
+  {
+    id: 'legal',
+    name: 'Aviso Pre-Legal',
+    tone: 'legal',
+    toneLabel: '⚖️ Pre-Legal',
+    msg: `*NOTIFICACIÓN PRE-JUDICIAL*\n\nSr/Sra. *{nombre}*, cédula *{cedula}*:\n\nMarcimex S.A. le notifica que su obligación de *$${'{deuda}'}* ha sido derivada al Departamento Jurídico por incumplimiento de pago (*{dias_mora} días de mora*).\n\nTiene 72 horas para regularizar su situación antes de iniciar acciones legales.\n\n📞 Gestión Legal: 04-XXXXXXX`
+  }
+];
+
+// ─── RENDER TEMPLATES ────────────────────────────────────────────
+function renderTemplates() {
+  const grid = document.getElementById('templateGrid');
+  grid.innerHTML = templates.map(t => `
+    <div class="template-card" onclick="selectTemplate('${t.id}', this)" id="tpl-${t.id}">
+      <div class="tpl-name">
+        ${t.name}
+        <span class="tpl-tone tone-${t.tone}">${t.toneLabel}</span>
+      </div>
+      <div class="tpl-preview">${formatPreview(t.msg)}</div>
+    </div>
+  `).join('');
+}
+
+function formatPreview(msg) {
+  return msg
+    .replace(/\{(\w+)\}/g, '<span class="var">{$1}</span>')
+    .replace(/\*(.*?)\*/g, '<strong>$1</strong>')
+    .replace(/\n/g, '<br>');
+}
+
+function selectTemplate(id, el) {
+  document.querySelectorAll('.template-card').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+  selectedTemplate = templates.find(t => t.id === id);
+  document.getElementById('customTemplate').value = '';
+  showToast('✅ Plantilla "' + selectedTemplate.name + '" seleccionada');
+}
+
+// ─── CARGAR EXCEL ────────────────────────────────────────────────
+function loadFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const wb = XLSX.read(e.target.result, { type: 'binary' });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const data = XLSX.utils.sheet_to_json(ws, { defval: '' });
+    processData(data);
+  };
+  reader.readAsBinaryString(file);
+}
+
+function loadDemoData() {
+  const demo = [
+    { telefono: '593991234567', nombre: 'María González', deuda: '245.50', vencimiento: '15/06/2026', cedula: '0912345678', dias_mora: '30', asesor: 'Carlos' },
+    { telefono: '593987654321', nombre: 'Pedro Alvarado', deuda: '189.00', vencimiento: '20/06/2026', cedula: '0923456789', dias_mora: '15', asesor: 'Ana' },
+    { telefono: '593976543210', nombre: 'Laura Vásquez', deuda: '530.75', vencimiento: '10/06/2026', cedula: '0934567890', dias_mora: '45', asesor: 'Carlos' },
+    { telefono: '593965432109', nombre: 'Jorge Mendoza', deuda: '120.00', vencimiento: '25/06/2026', cedula: '0945678901', dias_mora: '5', asesor: 'Ana' },
+    { telefono: '593954321098', nombre: 'Carmen Ríos', deuda: '890.25', vencimiento: '05/06/2026', cedula: '0956789012', dias_mora: '60', asesor: 'Carlos' },
+    { telefono: '593943210987', nombre: 'Roberto Díaz', deuda: '345.00', vencimiento: '18/06/2026', cedula: '0967890123', dias_mora: '22', asesor: 'Ana' },
+  ];
+  processData(demo);
+  showToast('🎯 Datos de demo cargados');
+}
+
+function processData(data) {
+  contacts = data.map(row => ({
+    telefono: String(row.telefono || row.Telefono || row.TELEFONO || '').replace(/\D/g,''),
+    nombre:   row.nombre || row.Nombre || row.NOMBRE || 'Cliente',
+    deuda:    row.deuda || row.Deuda || row.DEUDA || '0',
+    vencimiento: row.vencimiento || row.Vencimiento || '',
+    cedula:   row.cedula || row.Cedula || '',
+    dias_mora: row.dias_mora || row.Dias_Mora || '0',
+    asesor:   row.asesor || row.Asesor || '',
+    status:   'pending'
+  })).filter(c => c.telefono.length >= 10);
+
+  renderTable();
+  document.getElementById('totalRows').textContent = contacts.length;
+  document.getElementById('tableWrap').style.display = 'block';
+}
+
+function renderTable() {
+  const cols = ['telefono','nombre','deuda','vencimiento','dias_mora','estado'];
+  document.getElementById('tableHead').innerHTML = cols.map(c =>
+    `<th>${c.charAt(0).toUpperCase()+c.slice(1)}</th>`
+  ).join('');
+
+  document.getElementById('tableBody').innerHTML = contacts.slice(0,50).map((c,i) => `
+    <tr>
+      <td class="td-phone">+${c.telefono}</td>
+      <td class="td-name">${c.nombre}</td>
+      <td class="td-amount">$${c.deuda}</td>
+      <td>${c.vencimiento || '—'}</td>
+      <td>${c.dias_mora || '0'} días</td>
+      <td><span class="status-pill s-pending">Pendiente</span></td>
+    </tr>
+  `).join('') + (contacts.length > 50 ? `<tr><td colspan="6" style="text-align:center;color:var(--muted);font-size:11px">... y ${contacts.length-50} más</td></tr>` : '');
+}
+
+function clearData() {
+  contacts = [];
+  document.getElementById('tableWrap').style.display = 'none';
+  showToast('🗑️ Lista limpiada');
+}
+
+// ─── NAVEGACIÓN ──────────────────────────────────────────────────
+function goStep(n) {
+  if (n === 2 && contacts.length === 0) { showToast('⚠️ Primero carga tu lista de contactos'); return; }
+  if (n === 3) {
+    const custom = document.getElementById('customTemplate').value.trim();
+    if (!selectedTemplate && !custom) { showToast('⚠️ Selecciona una plantilla o escribe un mensaje'); return; }
+    updateReview();
+  }
+  if (n === 4) startCampaign();
+
+  currentStep = n;
+  for (let i = 1; i <= 4; i++) {
+    const sec = document.getElementById('sec'+i);
+    const step = document.getElementById('step'+i);
+    sec.classList.toggle('active', i === n);
+    step.classList.toggle('active', i === n);
+    step.classList.toggle('done', i < n);
+    if (i < 4) document.getElementById('line'+i).classList.toggle('done', i < n);
+  }
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+// ─── REVIEW ──────────────────────────────────────────────────────
+function updateReview() {
+  const total = contacts.length;
+  const cost = (total * 0.0147).toFixed(2);
+  const speed = 60000 / sendDelay;
+  const mins = Math.ceil(total / speed);
+
+  document.getElementById('rev-total').textContent = total;
+  document.getElementById('rev-cost').textContent = '$'+cost;
+  document.getElementById('rev-tiempo').textContent = mins < 60 ? mins+'m' : Math.ceil(mins/60)+'h';
+  
+  const tplName = selectedTemplate ? selectedTemplate.name : 'Personalizada';
+  document.getElementById('rev-plantilla').textContent = tplName.split(' ')[0];
+
+  // Preview with first contact
+  if (contacts.length > 0) {
+    const preview = buildMessage(contacts[0]);
+    document.getElementById('msgPreview').innerHTML = preview.replace(/\n/g,'<br>').replace(/\*(.*?)\*/g,'<strong>$1</strong>');
+  }
+}
+
+function buildMessage(contact) {
+  const custom = document.getElementById('customTemplate').value.trim();
+  let tpl = custom || (selectedTemplate ? selectedTemplate.msg : '');
+  return tpl
+    .replace(/{nombre}/g, contact.nombre)
+    .replace(/{deuda}/g, contact.deuda)
+    .replace(/{vencimiento}/g, contact.vencimiento || 'próximos días')
+    .replace(/{cedula}/g, contact.cedula || '—')
+    .replace(/{dias_mora}/g, contact.dias_mora || '0')
+    .replace(/{telefono}/g, contact.telefono)
+    .replace(/{asesor}/g, contact.asesor || 'nuestro equipo');
+}
+
+// ─── CAMPAÑA ─────────────────────────────────────────────────────
+async function startCampaign() {
+  sentCount = 0; failedCount = 0; results = []; paused = false; stopped = false;
+  const total = contacts.length;
+  document.getElementById('cnt-total').textContent = total;
+  document.getElementById('cnt-pending').textContent = total;
+  addLog('info', `🚀 Campaña iniciada: ${document.getElementById('cfg-campname').value}`);
+  addLog('info', `📋 Contactos: ${total} | Velocidad: ${Math.round(60000/sendDelay)} msg/min`);
+
+  let i = 0;
+  sendInterval = setInterval(async () => {
+    if (paused || stopped) return;
+    if (i >= contacts.length) {
+      clearInterval(sendInterval);
+      finishCampaign();
+      return;
+    }
+
+    const contact = contacts[i];
+    const msg = buildMessage(contact);
+    const backendUrl = document.getElementById('cfg-backend').value;
+
+    try {
+      // Simula envío (en producción llama al backend real)
+      const success = await simulateSend(backendUrl, contact.telefono, msg);
+
+      if (success) {
+        sentCount++;
+        contact.status = 'sent';
+        contact.sentAt = new Date().toLocaleTimeString('es-EC');
+        addLog('ok', `✅ ${contact.nombre} (+${contact.telefono.slice(-4)}) — $${contact.deuda}`);
+      } else {
+        failedCount++;
+        contact.status = 'failed';
+        contact.sentAt = new Date().toLocaleTimeString('es-EC');
+        addLog('err', `❌ Error: ${contact.nombre} (+${contact.telefono.slice(-4)})`);
+      }
+    } catch(e) {
+      failedCount++;
+      contact.status = 'failed';
+      addLog('err', `❌ ${contact.nombre}: ${e.message}`);
+    }
+
+    i++;
+    updateProgress(i, total);
+  }, sendDelay);
+}
+
+async function simulateSend(backendUrl, phone, msg) {
+  // En producción: descomenta y usa el fetch real
+  /*
+  const res = await fetch(`${backendUrl}/api/mass/send`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ to: phone, message: msg })
+  });
+  return res.ok;
+  */
+
+  // SIMULACIÓN para demo (90% éxito)
+  await new Promise(r => setTimeout(r, 100));
+  return Math.random() > 0.1;
+}
+
+function updateProgress(done, total) {
+  const pct = Math.round((done/total)*100);
+  document.getElementById('bigPct').textContent = pct+'%';
+  document.getElementById('bigLabel').textContent = `${done} de ${total} mensajes procesados`;
+  document.getElementById('progFill').style.width = pct+'%';
+  document.getElementById('cnt-sent').textContent = sentCount;
+  document.getElementById('cnt-failed').textContent = failedCount;
+  document.getElementById('cnt-pending').textContent = total - done;
+  document.getElementById('progLeft').textContent = (total-done)+' restantes';
+  document.getElementById('progSpeed').textContent = Math.round(60000/sendDelay)+' msg/min';
+}
+
+function finishCampaign() {
+  document.getElementById('campBadge').textContent = '✅ Completada';
+  document.getElementById('campBadge').style.background = 'rgba(0,212,170,0.2)';
+  document.getElementById('campBadge').style.color = 'var(--accent2)';
+  document.getElementById('bigLabel').textContent = '¡Campaña completada!';
+  document.getElementById('exportBtn').style.display = 'flex';
+  document.getElementById('resultsWrap').style.display = 'block';
+  renderResults();
+  addLog('ok', `🎉 Campaña finalizada: ${sentCount} enviados, ${failedCount} fallidos`);
+  showToast(`🎉 Campaña completada: ${sentCount} enviados exitosamente`);
+  saveCampaignHistory();
+}
+
+function renderResults() {
+  document.getElementById('resultsBody').innerHTML = contacts.map(c => `
+    <tr>
+      <td class="td-phone">+${c.telefono}</td>
+      <td>${c.nombre}</td>
+      <td class="td-amount">$${c.deuda}</td>
+      <td><span class="status-pill ${c.status==='sent'?'s-sent':'s-failed'}">${c.status==='sent'?'✅ Enviado':'❌ Fallido'}</span></td>
+      <td>${c.sentAt||'—'}</td>
+    </tr>
+  `).join('');
+}
+
+function togglePause() {
+  paused = !paused;
+  document.getElementById('pauseBtn').textContent = paused ? '▶️ Reanudar' : '⏸ Pausar';
+  addLog('info', paused ? '⏸ Campaña pausada' : '▶️ Campaña reanudada');
+  showToast(paused ? '⏸ Campaña pausada' : '▶️ Campaña reanudada');
+}
+
+function stopCampaign() {
+  if (!confirm('¿Detener la campaña? No se puede reanudar.')) return;
+  stopped = true;
+  clearInterval(sendInterval);
+  addLog('err', '⏹ Campaña detenida manualmente');
+  document.getElementById('campBadge').textContent = '⏹ Detenida';
+  document.getElementById('exportBtn').style.display = 'flex';
+  document.getElementById('resultsWrap').style.display = 'block';
+  renderResults();
+  showToast('⏹ Campaña detenida');
+}
+
+function exportResults() {
+  const data = contacts.map(c => ({
+    Telefono: c.telefono,
+    Nombre: c.nombre,
+    Deuda: c.deuda,
+    Estado: c.status === 'sent' ? 'Enviado' : 'Fallido',
+    Hora: c.sentAt || '',
+  }));
+  const ws = XLSX.utils.json_to_sheet(data);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Resultados');
+  XLSX.writeFile(wb, `ElhyAi-Campaña-${Date.now()}.xlsx`);
+  showToast('📥 Excel de resultados descargado');
+}
+
+// ─── HISTORIAL ───────────────────────────────────────────────────
+function saveCampaignHistory() {
+  const campaigns = JSON.parse(localStorage.getItem('elhyai_campaigns') || '[]');
+  campaigns.unshift({
+    name: document.getElementById('cfg-campname').value,
+    date: new Date().toLocaleDateString('es-EC'),
+    total: contacts.length,
+    sent: sentCount,
+    failed: failedCount,
+  });
+  localStorage.setItem('elhyai_campaigns', JSON.stringify(campaigns.slice(0,5)));
+  loadCampaignHistory();
+}
+
+function loadCampaignHistory() {
+  const campaigns = JSON.parse(localStorage.getItem('elhyai_campaigns') || '[]');
+  const el = document.getElementById('prevCampaigns');
+  if (campaigns.length === 0) return;
+  el.innerHTML = campaigns.map(c => `
+    <div style="padding:8px 0;border-bottom:1px solid var(--border);font-size:12px">
+      <div style="font-weight:600">${c.name}</div>
+      <div style="color:var(--muted);font-size:11px">${c.date} · ${c.total} contactos</div>
+      <div style="display:flex;gap:10px;margin-top:3px">
+        <span style="color:var(--accent2)">✅ ${c.sent}</span>
+        <span style="color:var(--accent3)">❌ ${c.failed}</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ─── UTILIDADES ──────────────────────────────────────────────────
+function addLog(type, msg) {
+  const box = document.getElementById('logBox');
+  const div = document.createElement('div');
+  div.className = `log-${type}`;
+  div.textContent = `[${new Date().toLocaleTimeString('es-EC')}] ${msg}`;
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+}
+
+function setSpeed(el, delay) {
+  sendDelay = delay;
+  document.querySelectorAll('.speed-opt').forEach(o => o.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+function toggleSchedule(btn) {
+  btn.classList.toggle('on');
+  document.getElementById('schedFields').style.display = btn.classList.contains('on') ? 'block' : 'none';
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  document.getElementById('toastMsg').textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// ─── INIT ────────────────────────────────────────────────────────
+renderTemplates();
+loadCampaignHistory();
+
+// Drag & drop
+const zone = document.getElementById('uploadZone');
+zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag'); });
+zone.addEventListener('dragleave', () => zone.classList.remove('drag'));
+zone.addEventListener('drop', e => {
+  e.preventDefault();
+  zone.classList.remove('drag');
+  const file = e.dataTransfer.files[0];
+  if (file) {
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const wb = XLSX.read(ev.target.result, { type: 'binary' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      processData(XLSX.utils.sheet_to_json(ws, { defval: '' }));
+    };
+    reader.readAsBinaryString(file);
+  }
+});
+</script>
+</body>
+</html>
