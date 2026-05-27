@@ -1,27 +1,37 @@
 const express = require('express');
-const router  = express.Router();
+const router = express.Router();
 
-// GET — verificación de webhook por Meta
+// ======================================================
+// GET → Verificación webhook Meta
+// ======================================================
 router.get('/', (req, res) => {
-  const mode      = req.query['hub.mode'];
-  const token     = req.query['hub.verify_token'];
+
+  const mode = req.query['hub.mode'];
+  const token = req.query['hub.verify_token'];
   const challenge = req.query['hub.challenge'];
 
-  if (mode === 'subscribe' && token === process.env.VERIFY_TOKEN) {
-    console.log('✅ Webhook Meta verificado correctamente');
+  if (
+    mode === 'subscribe' &&
+    token === process.env.VERIFY_TOKEN
+  ) {
+    console.log('✅ Webhook verificado');
     return res.status(200).send(challenge);
   }
 
-  console.warn('❌ Token incorrecto:', token);
+  console.log('❌ Token inválido');
   return res.sendStatus(403);
 });
 
-// POST — recibir mensajes entrantes
+// ======================================================
+// POST → Mensajes entrantes WhatsApp
+// ======================================================
 router.post('/', (req, res) => {
+
   try {
+
     const body = req.body;
 
-    console.log('📩 Webhook recibido:', JSON.stringify(body));
+    console.log('📩 Evento recibido:', JSON.stringify(body));
 
     if (body.object === 'whatsapp_business_account') {
       return res.sendStatus(200);
@@ -29,4 +39,6 @@ router.post('/', (req, res) => {
 
     return res.sendStatus(404);
 
-  } catch (
+  } catch (error) {
+
+    console.error('❌ Error webhook
