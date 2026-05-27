@@ -3,23 +3,20 @@ const express = require('express');
 const app = express();
 
 app.get('/', (req, res) => {
-  res.status(200).send('ELHYAI OK');
-});
-
-app.get('/api/health', (req, res) => {
-  res.status(200).json({
-    success: true
-  });
+  res.send('ELHYAI OK');
 });
 
 app.get('/webhook/meta', (req, res) => {
-  const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
+  const VERIFY_TOKEN = 'elhy2026';
 
   const mode = req.query['hub.mode'];
   const token = req.query['hub.verify_token'];
   const challenge = req.query['hub.challenge'];
 
-  if (mode && token === VERIFY_TOKEN) {
+  console.log(req.query);
+
+  if (mode === 'subscribe' && token === VERIFY_TOKEN) {
+    console.log('WEBHOOK VERIFICADO');
     return res.status(200).send(challenge);
   }
 
