@@ -1,4 +1,5 @@
 const express = require("express");
+const axios = require("axios");
 require("dotenv").config();
 
 const app = express();
@@ -32,11 +33,50 @@ app.get("/webhook", (req, res) => {
   return res.sendStatus(403);
 });
 
-app.post("/webhook", (req, res) => {
-  console.log("Mensaje recibido:");
-  console.log(JSON.stringify(req.body, null, 2));
+app.post("/webhook", async (req, res) => {
+  try {
 
-  return res.sendStatus(200);
+    console.log("Mensaje recibido:");
+    console.log(JSON.stringify(req.body, null, 2));
+
+    const message =
+      req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+
+    if (message) {
+
+      const from = message.from;
+      const text = message.text?.body || "";
+
+      console.log("Mensaje de:", from);
+      console.log("Texto:", text);
+
+      await axios({
+        method: "POST",
+        url: `https://graph.facebook.com/v25.0/${process.env.PHONE_NUMBER_ID}/messages`,
+        headers: {
+          Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
+          "Content-Type": "application/json"
+        },
+        data: {
+          messaging_product: "whatsapp",
+          to: from,
+          text: {
+            body: `Hola Cristian 🚀 Recibí tu mensaje: ${text}`
+          }
+        }
+      });
+
+      console.log("Respuesta enviada");
+    }
+
+    res.sendStatus(200);
+
+  } catch (error) {
+
+    console.log(error.response?.data || error.message);
+
+    res.sendStatus(500);
+  }
 });
 
 const PORT = process.env.PORT || 3000;
