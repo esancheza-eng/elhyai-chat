@@ -1,18 +1,42 @@
-{
-  "name": "elhyai-chat",
-  "version": "1.0.0",
-  "main": "server.js",
-  "scripts": {
-    "start": "node server.js"
-  },
-  "dependencies": {
-    "axios": "^1.7.2",
-    "cors": "^2.8.5",
-    "dotenv": "^16.4.5",
-    "express": "^4.19.2",
-    "express-rate-limit": "^7.1.5",
-    "helmet": "^7.1.0",
-    "morgan": "^1.10.0",
-    "xlsx": "^0.18.5"
+const express = require("express");
+require("dotenv").config();
+
+const app = express();
+
+app.use(express.json());
+
+app.get("/", (req, res) => {
+  res.send("Servidor funcionando");
+});
+
+app.get("/health", (req, res) => {
+  res.json({
+    status: "ok"
+  });
+});
+
+app.get("/webhook", (req, res) => {
+  const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
+
+  const mode = req.query["hub.mode"];
+  const token = req.query["hub.verify_token"];
+  const challenge = req.query["hub.challenge"];
+
+  if (mode && token === VERIFY_TOKEN) {
+    console.log("Webhook verificado");
+    return res.status(200).send(challenge);
   }
-}
+
+  return res.sendStatus(403);
+});
+
+app.post("/webhook", (req, res) => {
+  console.log(req.body);
+  return res.sendStatus(200);
+});
+
+const PORT = process.env.PORT || 8080;
+
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`Servidor corriendo en puerto ${PORT}`);
+});
