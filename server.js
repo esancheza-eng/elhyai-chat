@@ -45,7 +45,7 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // ── Frontend estático ──────────────────────────────────────
-app.use(express.static(path.join(__dirname, '../frontend')));
+app.use(express.static(__dirname));
 
 // ── Rutas API ──────────────────────────────────────────────
 app.use('/api/campaigns', sendLimiter, campaignRoutes);
@@ -65,7 +65,7 @@ app.get('/api/health', (req, res) => {
 
 // ── SPA fallback SOLO frontend ─────────────────────────────
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, '../frontend/index.html'));
+  res.sendFile(path.join(__dirname, 'index.html'));
 });
 // ── Error handler ──────────────────────────────────────────
 app.use((err, req, res, next) => {
