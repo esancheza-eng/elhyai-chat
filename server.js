@@ -41,6 +41,6 @@ app.post("/webhook", (req, res) => {
 
 const PORT = process.env.PORT;
 
-app.listen(PORT, "0.0.0.0", () => {
+app.listen(PORT, () => {
   console.log(`Servidor corriendo en puerto ${PORT}`);
 });
