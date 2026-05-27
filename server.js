@@ -1,5 +1,4 @@
 const express = require("express");
-const axios = require("axios");
 require("dotenv").config();
 
 const app = express();
@@ -17,64 +16,68 @@ app.get("/health", (req, res) => {
 });
 
 app.get("/webhook", (req, res) => {
-  const VERIFY_TOKEN = process.env.VERIFY_TOKEN || "elhy2026";
+  const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
 
   const mode = req.query["hub.mode"];
   const token = req.query["hub.verify_token"];
   const challenge = req.query["hub.challenge"];
 
-  console.log("Webhook recibido");
-
-  if (mode === "subscribe" && token === VERIFY_TOKEN) {
-    console.log("Webhook verificado");
-    return res.status(200).send(challenge);
+  if (mode && token) {
+    if (mode === "subscribe" && token === VERIFY_TOKEN) {
+      console.log("Webhook verificado");
+      return res.status(200).send(challenge);
+    } else {
+      return res.sendStatus(403);
+    }
   }
-
-  return res.sendStatus(403);
 });
 
 app.post("/webhook", async (req, res) => {
+  console.log("Mensaje recibido");
+
   try {
+    const body = req.body;
 
-    console.log("Mensaje recibido:");
-    console.log(JSON.stringify(req.body, null, 2));
-
-    const message =
-      req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
-
-    if (message) {
+    if (
+      body.entry &&
+      body.entry[0].changes &&
+      body.entry[0].changes[0].value.messages
+    ) {
+      const message =
+        body.entry[0].changes[0].value.messages[0];
 
       const from = message.from;
-      const text = message.text?.body || "";
 
-      console.log("Mensaje de:", from);
-      console.log("Texto:", text);
+      const token = process.env.WHATSAPP_TOKEN;
+      const phone_number_id = process.env.PHONE_NUMBER_ID;
 
-      await axios({
-        method: "POST",
-        url: `https://graph.facebook.com/v25.0/${process.env.PHONE_NUMBER_ID}/messages`,
-        headers: {
-          Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
-          "Content-Type": "application/json"
-        },
-        data: {
-          messaging_product: "whatsapp",
-          to: from,
-          text: {
-            body: `Hola Cristian 🚀 Recibí tu mensaje: ${text}`
-          }
+      const response = await fetch(
+        `https://graph.facebook.com/v22.0/${phone_number_id}/messages`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            messaging_product: "whatsapp",
+            to: from,
+            text: {
+              body: "Hola Cristian 👋 Soy ELHYAI funcionando correctamente."
+            }
+          })
         }
-      });
+      );
 
+      const data = await response.json();
+
+      console.log(data);
       console.log("Respuesta enviada");
     }
 
     res.sendStatus(200);
-
   } catch (error) {
-
-    console.log(error.response?.data || error.message);
-
+    console.log(error);
     res.sendStatus(500);
   }
 });
