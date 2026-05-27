@@ -1,24 +1,14 @@
 const express = require('express');
-const cors = require('cors');
-const helmet = require('helmet');
-const morgan = require('morgan');
-require('dotenv').config();
 
 const app = express();
 
-app.use(cors());
-app.use(helmet());
-app.use(morgan('dev'));
-app.use(express.json());
-
 app.get('/', (req, res) => {
-  res.send('ELHYAI funcionando 🚀');
+  res.status(200).send('ELHYAI OK');
 });
 
 app.get('/api/health', (req, res) => {
-  res.json({
-    success: true,
-    status: 'online'
+  res.status(200).json({
+    success: true
   });
 });
 
@@ -36,8 +26,8 @@ app.get('/webhook/meta', (req, res) => {
   return res.sendStatus(403);
 });
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8080;
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`Servidor corriendo en puerto ${PORT}`);
 });
