@@ -63,11 +63,10 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// ── SPA fallback ───────────────────────────────────────────
-app.use((req, res) => {
+// ── SPA fallback SOLO frontend ─────────────────────────────
+app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, '../frontend/index.html'));
 });
-
 // ── Error handler ──────────────────────────────────────────
 app.use((err, req, res, next) => {
   console.error('❌ Error:', err.message);
