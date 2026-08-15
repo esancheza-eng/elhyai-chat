@@ -3,7 +3,6 @@ require("dotenv").config();
 const app = express();
 app.use(express.json());
 app.use((req, res, next) => { console.log('LLEGA:', req.method, req.path); next(); });
-
 app.get("/", (req, res) => {
   res.send("ELHYAI OK");
 });
@@ -41,7 +40,7 @@ app.post("/webhook", async (req, res) => {
       const token = process.env.WHATSAPP_TOKEN;
       const phone_number_id = process.env.PHONE_NUMBER_ID;
       const response = await fetch(
-        `https://graph.facebook.com/v22.0/${phone_number_id}/messages`,
+        `https://graph.facebook.com/v25.0/${phone_number_id}/messages`,
         {
           method: "POST",
           headers: {
