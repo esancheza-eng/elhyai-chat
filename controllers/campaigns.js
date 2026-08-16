@@ -50,7 +50,7 @@ exports.parseExcel = (req, res) => {
     const colNombre   = find('Nombre del Cliente','Nombre','nombre','name','NOMBRE','cliente');
     const colNumero   = find('Teléfono Celular','Telefono Celular','Número','numero','telefono','celular','phone','TELEFONO','TEL');
     const colDeuda    = find('Saldo Crédito Final Total','Saldo Credito Final Total','Suma Saldo Cuota desde Fecha Antigua','Deuda','deuda','saldo','monto','SALDO','DEUDA');
-    const colDias     = find('DIAS VENCIDOS','Días vencidos','dias vencidos','dias','vencidos','DIAS','DíasVencidos');
+    const colDias     = find('DIAS VENCIDOS','Días vencidos','dias vencidos','dias','vencidos','DIAS','DíasVencidos','dias_mora','DIAS_MORA','Días Mora','Dias Mora');
     const colMensaje  = find('MENSAJE','Mensaje','mensaje','MESSAGE');
     const colCobrador = find('Nombre del Cobrador Actual','Cobrador','cobrador','COBRADOR');
     const colTienda   = find('Tienda Factura','Tienda','tienda','TIENDA');
