@@ -1,7 +1,10 @@
 const express = require("express");
 require("dotenv").config();
 const app = express();
-app.use(express.json());
+
+// Aumentamos el límite de JSON porque los Excel en base64 pueden pesar varios MB
+app.use(express.json({ limit: "25mb" }));
+
 app.use((req, res, next) => { console.log('LLEGA:', req.method, req.path); next(); });
 
 app.get("/", (req, res) => {
@@ -14,6 +17,11 @@ app.get("/health", (req, res) => {
   });
 });
 
+// ── Rutas de Campañas Masivas ──────────────────────────────
+const campaignsRouter = require("./routes/campaigns");
+app.use("/api/campaigns", campaignsRouter);
+
+// ── Webhook de WhatsApp (bot conversacional) ───────────────
 app.get("/webhook", (req, res) => {
   const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
   const mode = req.query["hub.mode"];
@@ -29,7 +37,7 @@ app.get("/webhook", (req, res) => {
   }
 });
 
-// System prompt: personalidad y contexto del bot. Ajusta libremente.
+// System prompt: personalidad y contexto del bot conversacional.
 const SYSTEM_PROMPT = `Eres el asistente virtual de ElhyAi Consultores & Educación Digital,
 una consultora digital ecuatoriana. Respondes por WhatsApp de forma clara, cercana y profesional,
 en español. Mantén las respuestas breves (máximo 3-4 líneas), ya que es un chat de WhatsApp.
@@ -80,8 +88,6 @@ app.post("/webhook", async (req, res) => {
       const token = process.env.WHATSAPP_TOKEN;
       const phone_number_id = process.env.PHONE_NUMBER_ID;
 
-      // Responder 200 a Meta de inmediato para que no reintente el webhook
-      // mientras esperamos la respuesta de OpenAI (puede tardar unos segundos).
       res.sendStatus(200);
 
       let replyText;
@@ -116,7 +122,6 @@ app.post("/webhook", async (req, res) => {
     }
   } catch (error) {
     console.log(error);
-    // Si ya se envió el 200 arriba, este catch solo loguea el error.
     if (!res.headersSent) res.sendStatus(500);
   }
 });
