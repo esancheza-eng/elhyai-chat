@@ -1,6 +1,10 @@
 const express = require("express");
+const cors = require("cors");
 require("dotenv").config();
 const app = express();
+
+// Permite que el frontend en GitHub Pages (otro dominio) llame a este backend
+app.use(cors());
 
 // Aumentamos el límite de JSON porque los Excel en base64 pueden pesar varios MB
 app.use(express.json({ limit: "25mb" }));
