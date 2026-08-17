@@ -1,7 +1,35 @@
 const express = require("express");
 const cors = require("cors");
 require("dotenv").config();
+const { db, admin } = require("./config/firebase");
 const app = express();
+
+// Guarda un mensaje en Firestore, bajo el documento del cliente (por teléfono).
+// direccion: "entrante" (cliente -> nosotros) o "saliente" (nosotros -> cliente)
+async function guardarMensaje({ telefono, nombre, texto, direccion }) {
+  try {
+    const conversacionRef = db.collection("conversaciones").doc(telefono);
+
+    await conversacionRef.set(
+      {
+        telefono,
+        nombre: nombre || null,
+        ultimoMensaje: texto,
+        ultimaActualizacion: admin.firestore.FieldValue.serverTimestamp(),
+        ...(direccion === "entrante" ? { noLeido: true } : {})
+      },
+      { merge: true }
+    );
+
+    await conversacionRef.collection("mensajes").add({
+      texto,
+      direccion,
+      fecha: admin.firestore.FieldValue.serverTimestamp()
+    });
+  } catch (error) {
+    console.error("Error guardando mensaje en Firestore:", error.message);
+  }
+}
 
 // Permite que el frontend en GitHub Pages (otro dominio) llame a este backend
 app.use(cors());
@@ -24,6 +52,10 @@ app.get("/health", (req, res) => {
 // ── Rutas de Campañas Masivas ──────────────────────────────
 const campaignsRouter = require("./routes/campaigns");
 app.use("/api/campaigns", campaignsRouter);
+
+// ── Rutas de Conversaciones (inbox) ────────────────────────
+const conversationsRouter = require("./routes/conversations");
+app.use("/api/conversations", conversationsRouter);
 
 // ── Webhook de WhatsApp (bot conversacional) ───────────────
 app.get("/webhook", (req, res) => {
@@ -89,10 +121,22 @@ app.post("/webhook", async (req, res) => {
       const from = message.from;
       const userText = message.text ? message.text.body : "";
 
+      // Nombre del cliente, si WhatsApp lo envía en el contacto
+      const contactos = body.entry[0].changes[0].value.contacts;
+      const nombreCliente = contactos && contactos[0] ? contactos[0].profile.name : null;
+
       const token = process.env.WHATSAPP_TOKEN;
       const phone_number_id = process.env.PHONE_NUMBER_ID;
 
       res.sendStatus(200);
+
+      // Guardamos el mensaje entrante del cliente
+      await guardarMensaje({
+        telefono: from,
+        nombre: nombreCliente,
+        texto: userText,
+        direccion: "entrante"
+      });
 
       let replyText;
       try {
@@ -121,6 +165,14 @@ app.post("/webhook", async (req, res) => {
       const data = await response.json();
       console.log(data);
       console.log("Respuesta enviada");
+
+      // Guardamos la respuesta que enviamos al cliente
+      await guardarMensaje({
+        telefono: from,
+        nombre: nombreCliente,
+        texto: replyText,
+        direccion: "saliente"
+      });
     } else {
       res.sendStatus(200);
     }
