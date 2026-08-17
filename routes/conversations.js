@@ -13,10 +13,16 @@ router.get("/", async (req, res) => {
       .orderBy("ultimaActualizacion", "desc")
       .get();
 
-    const conversaciones = snapshot.docs.map((doc) => ({
-      telefono: doc.id,
-      ...doc.data()
-    }));
+    const conversaciones = snapshot.docs.map((doc) => {
+      const data = doc.data();
+      return {
+        telefono: doc.id,
+        ...data,
+        ultimaActualizacion: data.ultimaActualizacion && data.ultimaActualizacion.toDate
+          ? data.ultimaActualizacion.toDate().toISOString()
+          : null
+      };
+    });
 
     res.json({ ok: true, conversaciones });
   } catch (error) {
@@ -39,7 +45,13 @@ router.get("/:telefono", async (req, res) => {
       .orderBy("fecha", "asc")
       .get();
 
-    const mensajes = snapshot.docs.map((doc) => doc.data());
+    const mensajes = snapshot.docs.map((doc) => {
+      const data = doc.data();
+      return {
+        ...data,
+        fecha: data.fecha && data.fecha.toDate ? data.fecha.toDate().toISOString() : null
+      };
+    });
     res.json({ ok: true, mensajes });
   } catch (error) {
     console.error("Error obteniendo hilo:", error.message);
