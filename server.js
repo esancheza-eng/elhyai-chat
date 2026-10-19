@@ -105,6 +105,41 @@ app.get("/webhook", (req, res) => {
 
 // ── Asistente virtual (IA) ─────────────────────────────────
 const asistente = require("./services/asistente");
+const campaignsCtrl = require("./controllers/campaigns");
+
+// Procesa los avisos de entrega de Meta (enviado / entregado / leído / fallido)
+async function procesarEstados(statuses) {
+  for (const st of statuses || []) {
+    const err = st.errors && st.errors[0];
+    const errorTexto = err
+      ? `(${err.code}) ${err.title || err.message || ""}${err.error_data && err.error_data.details ? " – " + err.error_data.details : ""}`.trim()
+      : null;
+
+    if (st.status === "failed") {
+      console.error(`❌ Meta NO entregó ${st.id} a ${st.recipient_id}: ${errorTexto}`);
+    } else {
+      console.log(`📬 Estado ${st.status} para ${st.recipient_id}`);
+    }
+
+    // Actualiza el registro de la campaña en curso (si el mensaje es de una campaña)
+    campaignsCtrl.registrarEstado(st.id, st.status, errorTexto);
+
+    // Guarda el estado en Firestore para consultarlo después
+    try {
+      await db.collection("estados_mensajes").doc(st.id).set(
+        {
+          estado: st.status,
+          telefono: st.recipient_id || null,
+          ...(errorTexto ? { error: errorTexto } : {}),
+          actualizado: admin.firestore.FieldValue.serverTimestamp()
+        },
+        { merge: true }
+      );
+    } catch (e) {
+      console.error("No se pudo guardar el estado:", e.message);
+    }
+  }
+}
 const basico = require("./services/respuestas-basicas");
 
 const FALLBACK_TEXTO =
@@ -143,8 +178,10 @@ app.post("/webhook", async (req, res) => {
 
   try {
     const value = req.body?.entry?.[0]?.changes?.[0]?.value;
+    if (value?.statuses) await procesarEstados(value.statuses);
+
     const message = value?.messages?.[0];
-    if (!message) return; // avisos de entregado/leído, etc.
+    if (!message) return; // solo eran avisos de entrega
 
     const from = message.from;
     const nombreCliente = value.contacts?.[0]?.profile?.name || null;

@@ -502,10 +502,29 @@ async function startCampaign() {
     document.getElementById('runningBlock').classList.remove('hidden');
     showToast(data.message);
     isPaused = false;
+    finEnvioVisto = null;
     pollStatus();
     pollInterval = setInterval(pollStatus, 2000);
   } catch(e) {
     showToast(e.message, true);
+  }
+}
+
+let finEnvioVisto = null;
+
+function escHtml(v) {
+  return String(v == null ? '' : v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Texto y color según el estado de entrega que confirma Meta
+function etiquetaEstado(l) {
+  if (l.status !== 'ok') return { cls: 'err', txt: '✗ ' + (l.error || 'error') };
+  switch (l.entrega) {
+    case 'failed':    return { cls: 'err', txt: '✗ no entregado: ' + (l.entregaError || 'sin detalle') };
+    case 'read':      return { cls: 'ok',  txt: '✓✓ leído' };
+    case 'delivered': return { cls: 'ok',  txt: '✓✓ entregado' };
+    case 'sent':      return { cls: 'ok',  txt: '✓ enviado' };
+    default:          return { cls: 'ok',  txt: '✓ aceptado por Meta (esperando entrega…)' };
   }
 }
 
@@ -515,8 +534,16 @@ async function pollStatus() {
     const job = await res.json();
     renderProgress(job);
     if (!job.running && job.finishedAt) {
-      clearInterval(pollInterval);
-      showToast(`Campaña finalizada: ${job.sent} enviados, ${job.failed} fallidos`);
+      // Los avisos de entrega de Meta llegan con retraso:
+      // seguimos revisando 3 minutos más antes de detener el sondeo.
+      if (!finEnvioVisto) {
+        finEnvioVisto = Date.now();
+        showToast(`Campaña finalizada: ${job.sent} enviados, ${job.failed} fallidos. Esperando confirmación de entrega…`);
+      } else if (Date.now() - finEnvioVisto > 180000) {
+        clearInterval(pollInterval);
+        const noEntregados = (job.log || []).filter(l => l.entrega === 'failed').length;
+        if (noEntregados) showToast(`${noEntregados} mensaje(s) NO fueron entregados por Meta. Revisa el motivo en la lista.`, true);
+      }
     }
   } catch(e) { /* silencioso, reintenta en el próximo tick */ }
 }
@@ -532,11 +559,14 @@ function renderProgress(job) {
   document.getElementById('miniFailed').textContent = job.failed;
 
   const logWrap = document.getElementById('logWrap');
-  logWrap.innerHTML = (job.log || []).slice().reverse().slice(0, 30).map(l => `
+  logWrap.innerHTML = (job.log || []).slice().reverse().slice(0, 30).map(l => {
+    const e = etiquetaEstado(l);
+    return `
     <div class="log-item">
-      <span>${l.nombre} · ${l.numero}</span>
-      <span class="${l.status === 'ok' ? 'ok' : 'err'}">${l.status === 'ok' ? '✓ enviado' : '✗ ' + (l.error || 'error')}</span>
-    </div>`).join('');
+      <span>${escHtml(l.nombre)} · ${escHtml(l.numero)}</span>
+      <span class="${e.cls}" style="text-align:right;margin-left:12px">${escHtml(e.txt)}</span>
+    </div>`;
+  }).join('');
 }
 
 async function pauseCampaign() {

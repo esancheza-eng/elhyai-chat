@@ -236,6 +236,20 @@ exports.getStatus = (req, res) => {
   res.json({ ...activeJob, pct });
 };
 
+// ── ESTADOS DE ENTREGA (llegan después por el webhook) ────
+// status: sent | delivered | read | failed
+const ORDEN_ESTADO = { sent: 1, delivered: 2, read: 3, failed: 4 };
+exports.registrarEstado = (msgId, status, errorTexto) => {
+  if (!msgId) return false;
+  const entrada = activeJob.log.find(l => l.msgId === msgId);
+  if (!entrada) return false;
+  // No retroceder (ej. un "delivered" que llega después de "read")
+  if ((ORDEN_ESTADO[status] || 0) < (ORDEN_ESTADO[entrada.entrega] || 0)) return true;
+  entrada.entrega = status;
+  if (errorTexto) entrada.entregaError = errorTexto;
+  return true;
+};
+
 // ── LOG EXPORT ────────────────────────────────────────────
 exports.getLog = (req, res) => {
   res.json({ ok: true, log: activeJob.log, stats: {
