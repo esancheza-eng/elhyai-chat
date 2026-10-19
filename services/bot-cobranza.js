@@ -31,8 +31,32 @@ function leerConfig() {
     horario: cfg.HORARIO || "lunes a viernes de 08:00 a 18:00",
     lugaresPago: cfg.LUGARES_PAGO || "Puede realizar su pago en cualquier agencia o con su gestor de cobranzas.",
     despedidaEquivocado: cfg.DESPEDIDA_EQUIVOCADO || "Disculpe la molestia, no volveremos a escribirle.",
-    despedidaSalir: cfg.DESPEDIDA_SALIR || "Entendido, no volverá a recibir recordatorios por este medio."
+    despedidaSalir: cfg.DESPEDIDA_SALIR || "Entendido, no volverá a recibir recordatorios por este medio.",
+    gestores: leerGestores(cfg.GESTORES || "")
   };
+}
+
+// "NOMBRE DEL GESTOR = 0987654321" → { "nombre normalizado": "593987654321" }
+function leerGestores(texto) {
+  const mapa = {};
+  for (const linea of String(texto).split("\n")) {
+    const i = linea.indexOf("=");
+    if (i < 0) continue;
+    const nombre = normNombre(linea.slice(0, i));
+    const tel = normTel(linea.slice(i + 1));
+    if (nombre && tel) mapa[nombre] = tel;
+  }
+  return mapa;
+}
+function normNombre(t) {
+  return String(t || "").toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-ZÑ ]/g, " ").replace(/\s+/g, " ").trim();
+}
+function normTel(v) {
+  let t = String(v || "").replace(/\D/g, "");
+  if (t.startsWith("00")) t = t.slice(2);
+  if (t.length === 10 && t.startsWith("09")) t = "593" + t.slice(1);
+  else if (t.length === 9 && t.startsWith("9")) t = "593" + t;
+  return /^5939\d{8}$/.test(t) ? t : "";
 }
 const CFG = leerConfig();
 
@@ -125,6 +149,29 @@ function limitePromesa(cliente) {
 }
 function ddmm(ms) { return fechaEC(ms + 5 * 3600 * 1000).slice(0, 5); }
 
+function telefonoGestor(cliente) {
+  if (!cliente) return "";
+  const directo = normTel(cliente.telefonoCobrador);
+  if (directo) return directo;
+  const nombre = normNombre(cliente.cobrador);
+  if (!nombre) return "";
+  if (CFG.gestores[nombre]) return CFG.gestores[nombre];
+  const palabras = nombre.split(" ").filter(p => p.length > 2);
+  for (const [n, tel] of Object.entries(CFG.gestores)) {
+    const coinciden = palabras.filter(p => n.split(" ").includes(p)).length;
+    if (coinciden >= Math.min(3, palabras.length)) return tel;
+  }
+  return "";
+}
+
+function textoGestor(cliente, gestor) {
+  const tel = telefonoGestor(cliente);
+  if (tel) {
+    return `Listo ✅ ${gestor} le atenderá.\n📞 Escríbale directamente aquí: https://wa.me/${tel}\nHorario: ${CFG.horario}.`;
+  }
+  return `Listo ✅ ${gestor} le contactará lo antes posible (horario: ${CFG.horario}).`;
+}
+
 function menu(saludo) {
   return `${saludo}
 Escriba el número de la opción:
@@ -145,7 +192,7 @@ Escriba el número de la opción:
  *  - conv: documento de la conversación (para saber el paso actual)
  * @returns {object} { texto, atender, paso, etiqueta, promesa, excluir, pausar }
  */
-function responder({ texto, esArchivo, cliente, conv }) {
+function responder({ texto, esArchivo, tipoMensaje, cliente, conv }) {
   const t = norm(texto);
   const paso = conv && conv.cobranzaPaso;
   const nombre = cliente ? titulo(cliente.nombre) : "";
@@ -153,6 +200,15 @@ function responder({ texto, esArchivo, cliente, conv }) {
   const gestor = cliente && cliente.cobrador ? titulo(cliente.cobrador) : "su gestor de cobranzas";
 
   // ── Archivos (comprobantes) ──
+  // Audio, video, ubicación, contacto: el bot no los entiende
+  if (esArchivo && !["image", "document"].includes(tipoMensaje || "image")) {
+    return {
+      texto: "Por este medio solo puedo leer mensajes escritos 📝 Escriba su consulta o MENÚ para ver las opciones.",
+      paso: (conv && conv.cobranzaPaso) || null
+    };
+  }
+
+  // Foto o documento = comprobante
   if (esArchivo) {
     return {
       texto: `Recibimos su archivo ✅ ${gestor} lo validará y le confirmará. Gracias por su pago.`,
@@ -198,7 +254,7 @@ function responder({ texto, esArchivo, cliente, conv }) {
   if (paso === "ofrecer_gestor" && !/^[1-6]$/.test(t)) {
     if (/^(si|sí|s|claro|ok|dale|bueno|por favor|si por favor|si quiero)\b/.test(t)) {
       return {
-        texto: `Listo ✅ ${gestor} le contactará lo antes posible (horario: ${CFG.horario}).`,
+        texto: textoGestor(cliente, gestor),
         atender: true, pausar: true, paso: null, etiqueta: "pide gestor"
       };
     }
@@ -257,7 +313,7 @@ function responder({ texto, esArchivo, cliente, conv }) {
   }
   if (op === 5) {
     return {
-      texto: `Listo ✅ ${gestor} le contactará lo antes posible (horario: ${CFG.horario}).`,
+      texto: textoGestor(cliente, gestor),
       atender: true, pausar: true, paso: null, etiqueta: "pide gestor"
     };
   }

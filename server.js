@@ -154,8 +154,8 @@ const botCobranza = require("./services/bot-cobranza");
 const BOT_MODO = (process.env.BOT_MODO || "cobranza").toLowerCase();
 const PAUSA_GESTOR_MS = 12 * 60 * 60 * 1000;
 
-async function atenderCobranza({ from, nombreCliente, userText, esArchivo, ref, conv, cliente }) {
-  const r = botCobranza.responder({ texto: userText, esArchivo, cliente, conv });
+async function atenderCobranza({ from, nombreCliente, userText, esArchivo, tipoMensaje, ref, conv, cliente }) {
+  const r = botCobranza.responder({ texto: userText, esArchivo, tipoMensaje, cliente, conv });
   const cambios = { cobranzaPaso: r.paso || null };
   if (r.atender) cambios.requiereAtencion = true;
   if (r.etiqueta) cambios.etiquetaCobranza = r.etiqueta;
@@ -235,6 +235,14 @@ app.post("/webhook", async (req, res) => {
       userText = message.text?.body || "";
     } else if (message.type === "interactive" || message.type === "button") {
       userText = message.button?.text || message.interactive?.button_reply?.title || message.interactive?.list_reply?.title || "";
+    } else if (message.type === "reaction" || message.type === "sticker") {
+      // Reacción con emoji (👍❤️) o sticker: se guarda en el chat, pero el bot NO responde
+      const emoji = message.reaction?.emoji || "";
+      const txt = message.type === "reaction" ? `[Reacción ${emoji}]`.replace(" ]", "]") : "[Sticker]";
+      if (message.type === "reaction" && !emoji) return; // el cliente quitó su reacción
+      await guardarMensaje({ telefono: from, nombre: nombreCliente, texto: txt, direccion: "entrante" });
+      console.log("Reacción/sticker de", from, "- sin respuesta del bot");
+      return;
     } else {
       esArchivo = true;
       const tipos = { image: "📷 Imagen", audio: "🎤 Audio", video: "🎥 Video", document: "📄 Documento", sticker: "Sticker", location: "📍 Ubicación" };
@@ -264,7 +272,7 @@ app.post("/webhook", async (req, res) => {
         console.error("No se pudo leer cobranza_clientes:", e.message);
       }
       if (BOT_MODO === "cobranza" || cliente) {
-        await atenderCobranza({ from, nombreCliente, userText, esArchivo, ref, conv, cliente });
+        await atenderCobranza({ from, nombreCliente, userText, esArchivo, tipoMensaje: message.type, ref, conv, cliente });
         return;
       }
     }
