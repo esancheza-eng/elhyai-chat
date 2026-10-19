@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 require("dotenv").config();
 const { db, admin } = require("./config/firebase");
+const crypto = require("crypto");
 const app = express();
 
 // Guarda un mensaje en Firestore, bajo el documento del cliente (por teléfono).
@@ -47,6 +48,32 @@ app.get("/health", (req, res) => {
   res.json({
     status: "ok"
   });
+});
+
+// ── Protección por clave de acceso ─────────────────────────
+// Todas las rutas /api/* exigen el header "x-api-key" igual a la
+// variable de entorno API_KEY (configurarla en Render).
+// /webhook queda libre porque lo llama Meta; /health también.
+function requireApiKey(req, res, next) {
+  if (req.method === "OPTIONS") return next(); // preflight CORS
+  const expected = process.env.API_KEY;
+  if (!expected) {
+    console.error("API_KEY no está configurada en las variables de entorno");
+    return res.status(503).json({ ok: false, error: "El servidor no tiene API_KEY configurada" });
+  }
+  const received = req.get("x-api-key") || "";
+  const a = Buffer.from(received);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+    return res.status(401).json({ ok: false, error: "Clave de acceso inválida" });
+  }
+  next();
+}
+app.use("/api", requireApiKey);
+
+// Ruta protegida para que las páginas verifiquen URL + clave
+app.get("/api/ping", (req, res) => {
+  res.json({ ok: true });
 });
 
 // ── Rutas de Campañas Masivas ──────────────────────────────

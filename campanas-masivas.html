@@ -291,6 +291,11 @@ table.preview tr:hover td { background:var(--surface); }
         <label>URL del backend</label>
         <input type="text" id="backendUrl" value="https://elhyai-chat.onrender.com">
       </div>
+      <div class="form-group">
+        <label>Clave de acceso</label>
+        <input type="password" id="apiKey" placeholder="Pega aquí la API_KEY" autocomplete="off" onchange="guardarApiKey()">
+        <div class="hint">Se guarda solo en este navegador.</div>
+      </div>
       <div class="info-row"><span>Estado</span><span id="backendStatus"><span class="badge badge-off">sin verificar</span></span></div>
       <button class="btn btn-ghost" style="width:100%;margin-top:8px" onclick="checkBackend()">Verificar conexión</button>
     </div>
@@ -314,6 +319,32 @@ table.preview tr:hover td { background:var(--surface); }
 
 <script>
 let backendUrl = document.getElementById('backendUrl').value;
+
+// ── Clave de acceso al backend ─────────────────────────
+// Se guarda solo en este navegador (localStorage) y se envía
+// en el header x-api-key en cada llamada a /api/*.
+const API_KEY_STORAGE = 'elhyai_api_key';
+function getApiKey() {
+  const el = document.getElementById('apiKey');
+  return el ? el.value.trim() : '';
+}
+function guardarApiKey() {
+  try { localStorage.setItem(API_KEY_STORAGE, getApiKey()); } catch (e) {}
+}
+(function cargarApiKey() {
+  try {
+    const k = localStorage.getItem(API_KEY_STORAGE);
+    if (k) document.getElementById('apiKey').value = k;
+  } catch (e) {}
+})();
+function apiFetch(url, options = {}) {
+  const headers = Object.assign({}, options.headers || {}, { 'x-api-key': getApiKey() });
+  return fetch(url, Object.assign({}, options, { headers })).then(res => {
+    if (res.status === 401) mostrarErrorClave();
+    return res;
+  });
+}
+function mostrarErrorClave() { showToast('Clave de acceso incorrecta o vacía.', true); }
 let clients = [];
 let stats = {};
 let useTemplate = true;
@@ -347,7 +378,12 @@ async function checkBackend() {
   const badge = document.getElementById('backendStatus');
   badge.innerHTML = '<span class="badge badge-off">verificando...</span>';
   try {
-    const res = await fetch(`${backendUrl}/api/campaigns/status`);
+    guardarApiKey();
+    const res = await apiFetch(`${backendUrl}/api/ping`);
+    if (res.status === 401) {
+      badge.innerHTML = '<span class="badge badge-off">clave incorrecta</span>';
+      return;
+    }
     if (!res.ok) throw new Error();
     badge.innerHTML = '<span class="badge badge-live">conectado</span>';
   } catch(e) {
@@ -378,7 +414,7 @@ function handleFile(file) {
     const base64 = reader.result.split(',')[1];
     backendUrl = document.getElementById('backendUrl').value.replace(/\/$/, '');
     try {
-      const res = await fetch(`${backendUrl}/api/campaigns/parse`, {
+      const res = await apiFetch(`${backendUrl}/api/campaigns/parse`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ data: base64 })
@@ -454,7 +490,7 @@ async function startCampaign() {
   }
 
   try {
-    const res = await fetch(`${backendUrl}/api/campaigns/start`, {
+    const res = await apiFetch(`${backendUrl}/api/campaigns/start`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
@@ -475,7 +511,7 @@ async function startCampaign() {
 
 async function pollStatus() {
   try {
-    const res = await fetch(`${backendUrl}/api/campaigns/status`);
+    const res = await apiFetch(`${backendUrl}/api/campaigns/status`);
     const job = await res.json();
     renderProgress(job);
     if (!job.running && job.finishedAt) {
@@ -507,7 +543,7 @@ async function pauseCampaign() {
   backendUrl = document.getElementById('backendUrl').value.replace(/\/$/, '');
   isPaused = !isPaused;
   const endpoint = isPaused ? 'pause' : 'resume';
-  await fetch(`${backendUrl}/api/campaigns/${endpoint}`, { method: 'POST' });
+  await apiFetch(`${backendUrl}/api/campaigns/${endpoint}`, { method: 'POST' });
   document.getElementById('btnPause').textContent = isPaused ? '▶ Reanudar' : '⏸ Pausar';
   showToast(isPaused ? 'Campaña pausada' : 'Campaña reanudada');
 }
@@ -515,7 +551,7 @@ async function pauseCampaign() {
 async function stopCampaign() {
   if (!confirm('¿Detener la campaña? No se podrá reanudar.')) return;
   backendUrl = document.getElementById('backendUrl').value.replace(/\/$/, '');
-  await fetch(`${backendUrl}/api/campaigns/stop`, { method: 'POST' });
+  await apiFetch(`${backendUrl}/api/campaigns/stop`, { method: 'POST' });
   clearInterval(pollInterval);
   showToast('Campaña detenida');
 }

@@ -76,6 +76,8 @@ body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text)
 <div class="config-bar">
   <span>Backend:</span>
   <input type="text" id="backendUrl" value="https://elhyai-chat.onrender.com">
+  <span>Clave:</span>
+  <input type="password" id="apiKey" placeholder="API_KEY" autocomplete="off" style="width:160px" onchange="guardarApiKey()">
   <button onclick="verificarConexion()">Verificar</button>
   <span><span class="dot" id="statusDot"></span> <span id="statusText">sin verificar</span></span>
 </div>
@@ -98,6 +100,35 @@ let backendUrl = document.getElementById('backendUrl').value.replace(/\/$/, '');
 let conversacionActiva = null;
 let pollInterval = null;
 
+// ── Clave de acceso al backend ─────────────────────────
+// Se guarda solo en este navegador (localStorage) y se envía
+// en el header x-api-key en cada llamada a /api/*.
+const API_KEY_STORAGE = 'elhyai_api_key';
+function getApiKey() {
+  const el = document.getElementById('apiKey');
+  return el ? el.value.trim() : '';
+}
+function guardarApiKey() {
+  try { localStorage.setItem(API_KEY_STORAGE, getApiKey()); } catch (e) {}
+}
+(function cargarApiKey() {
+  try {
+    const k = localStorage.getItem(API_KEY_STORAGE);
+    if (k) document.getElementById('apiKey').value = k;
+  } catch (e) {}
+})();
+function apiFetch(url, options = {}) {
+  const headers = Object.assign({}, options.headers || {}, { 'x-api-key': getApiKey() });
+  return fetch(url, Object.assign({}, options, { headers })).then(res => {
+    if (res.status === 401) mostrarErrorClave();
+    return res;
+  });
+}
+function mostrarErrorClave() {
+  document.getElementById('statusDot').className = 'dot err';
+  document.getElementById('statusText').textContent = 'clave incorrecta';
+}
+
 function fmtFecha(fechaISO) {
   if (!fechaISO) return '';
   const d = new Date(fechaISO);
@@ -111,7 +142,9 @@ async function verificarConexion() {
   text.textContent = 'verificando...';
   dot.className = 'dot';
   try {
-    const res = await fetch(`${backendUrl}/health`);
+    guardarApiKey();
+    const res = await apiFetch(`${backendUrl}/api/ping`);
+    if (res.status === 401) return;
     if (res.ok) {
       dot.className = 'dot ok';
       text.textContent = 'conectado';
@@ -126,7 +159,7 @@ async function verificarConexion() {
 
 async function cargarConversaciones() {
   try {
-    const res = await fetch(`${backendUrl}/api/conversations`);
+    const res = await apiFetch(`${backendUrl}/api/conversations`);
     const data = await res.json();
     const list = document.getElementById('convList');
 
@@ -168,7 +201,7 @@ async function abrirConversacion(telefono, nombre) {
 
 async function cargarHilo(telefono) {
   try {
-    const res = await fetch(`${backendUrl}/api/conversations/${telefono}`);
+    const res = await apiFetch(`${backendUrl}/api/conversations/${telefono}`);
     const data = await res.json();
     const body = document.getElementById('threadBody');
     if (!body) return;
