@@ -1,6 +1,17 @@
 const express = require("express");
 const router = express.Router();
-const { db } = require("../config/firebase");
+const { db, admin } = require("../config/firebase");
+const wa = require("../services/whatsapp");
+
+// Convierte un Timestamp de Firestore a texto ISO (o null)
+function toISO(ts) {
+  return ts && ts.toDate ? ts.toDate().toISOString() : null;
+}
+
+// Solo aceptamos teléfonos con dígitos (formato de WhatsApp: 593...)
+function telefonoValido(t) {
+  return /^[0-9]{8,15}$/.test(String(t || ""));
+}
 
 // ======================================================
 // GET /api/conversations
@@ -18,9 +29,8 @@ router.get("/", async (req, res) => {
       return {
         telefono: doc.id,
         ...data,
-        ultimaActualizacion: data.ultimaActualizacion && data.ultimaActualizacion.toDate
-          ? data.ultimaActualizacion.toDate().toISOString()
-          : null
+        ultimaActualizacion: toISO(data.ultimaActualizacion),
+        ultimoEntrante: toISO(data.ultimoEntrante)
       };
     });
 
@@ -56,6 +66,82 @@ router.get("/:telefono", async (req, res) => {
   } catch (error) {
     console.error("Error obteniendo hilo:", error.message);
     res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+// ======================================================
+// POST /api/conversations/:telefono/leido
+// Marca la conversación como leída (quita la etiqueta "nuevo").
+// ======================================================
+router.post("/:telefono/leido", async (req, res) => {
+  try {
+    const { telefono } = req.params;
+    if (!telefonoValido(telefono)) {
+      return res.status(400).json({ ok: false, error: "Teléfono inválido" });
+    }
+    await db.collection("conversaciones").doc(telefono).set({ noLeido: false }, { merge: true });
+    res.json({ ok: true });
+  } catch (error) {
+    console.error("Error marcando como leído:", error.message);
+    res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+// ======================================================
+// POST /api/conversations/:telefono/responder
+// Body: { texto }
+// Envía una respuesta escrita por un agente y la guarda en el hilo.
+// Ojo: WhatsApp solo permite texto libre si el cliente escribió
+// en las últimas 24 horas; si no, Meta devuelve un error.
+// ======================================================
+router.post("/:telefono/responder", async (req, res) => {
+  const { telefono } = req.params;
+  const texto = String((req.body && req.body.texto) || "").trim();
+
+  if (!telefonoValido(telefono)) {
+    return res.status(400).json({ ok: false, error: "Teléfono inválido" });
+  }
+  if (!texto) {
+    return res.status(400).json({ ok: false, error: "El mensaje está vacío" });
+  }
+  if (texto.length > 4096) {
+    return res.status(400).json({ ok: false, error: "El mensaje supera los 4096 caracteres que permite WhatsApp" });
+  }
+
+  try {
+    wa.checkCredentials();
+    const result = await wa.sendTextMessage(telefono, texto);
+
+    const ref = db.collection("conversaciones").doc(telefono);
+    await ref.set(
+      {
+        telefono,
+        ultimoMensaje: texto,
+        ultimaActualizacion: admin.firestore.FieldValue.serverTimestamp(),
+        noLeido: false
+      },
+      { merge: true }
+    );
+    await ref.collection("mensajes").add({
+      texto,
+      direccion: "saliente",
+      origen: "agente",
+      waMessageId: result && result.messages && result.messages[0] ? result.messages[0].id : null,
+      fecha: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    res.json({ ok: true });
+  } catch (error) {
+    const metaError = error.response && error.response.data && error.response.data.error;
+    const code = metaError && metaError.code;
+    let mensaje = error.message;
+    if (code === 131047) {
+      mensaje = "Pasaron más de 24 horas desde el último mensaje del cliente. WhatsApp solo permite responder con una plantilla aprobada.";
+    } else if (code === 131030) {
+      mensaje = "Con el número de prueba solo puedes escribir a números agregados como destinatarios en Meta.";
+    }
+    console.error("Error enviando respuesta del agente:", error.message);
+    res.status(502).json({ ok: false, error: mensaje, codigoMeta: code || null });
   }
 });
 

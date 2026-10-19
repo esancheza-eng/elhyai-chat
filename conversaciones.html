@@ -62,6 +62,18 @@ body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text)
 .msg.saliente { align-self:flex-end; background:var(--accent); color:#fff; border-bottom-right-radius:4px; }
 .msg-time { font-size:9px; color:var(--muted); margin-top:4px; display:block; }
 .msg.saliente .msg-time { color:rgba(255,255,255,0.7); }
+.thread { min-height:0; }
+.composer { border-top:1px solid var(--border); background:var(--panel); padding:12px 16px; display:flex; flex-direction:column; gap:8px; }
+.window-note { font-size:11px; padding:6px 10px; border-radius:8px; }
+.window-note.open { color:var(--accent2); background:rgba(0,212,170,0.08); }
+.window-note.closed { color:var(--warn); background:rgba(255,209,102,0.08); }
+.composer-row { display:flex; gap:10px; align-items:flex-end; }
+.composer textarea { flex:1; resize:none; min-height:44px; max-height:140px; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:11px 14px; color:var(--text); font-family:'DM Sans',sans-serif; font-size:13px; outline:none; }
+.composer textarea:focus { border-color:var(--accent); }
+.composer button { background:var(--accent); color:#fff; border:none; border-radius:12px; padding:12px 20px; font-size:13px; font-weight:600; cursor:pointer; white-space:nowrap; }
+.composer button:disabled { opacity:0.5; cursor:not-allowed; }
+.send-error { font-size:12px; color:var(--accent3); display:none; }
+.msg { white-space:pre-wrap; word-wrap:break-word; }
 .thread-placeholder { flex:1; display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:13px; flex-direction:column; gap:8px; }
 </style>
 </head>
@@ -70,7 +82,7 @@ body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text)
 <div class="topbar">
   <div class="logo">ElhyAi <span>Chat</span></div>
   <a class="nav-link" href="campanas-masivas.html">Campañas Masivas</a>
-  <a class="nav-link back-link" href="index.html">← Panel de Agentes</a>
+  <a class="nav-link back-link" href="index.html">← Menú</a>
 </div>
 
 <div class="config-bar">
@@ -129,6 +141,18 @@ function mostrarErrorClave() {
   document.getElementById('statusText').textContent = 'clave incorrecta';
 }
 
+// Escapa texto antes de insertarlo en la página (evita que un mensaje
+// de cliente con HTML o scripts se ejecute dentro del panel).
+function esc(v) {
+  return String(v == null ? '' : v)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// Datos de cada conversación (para saber la ventana de 24h)
+let conversacionesPorTelefono = {};
+const VENTANA_MS = 24 * 60 * 60 * 1000;
+
 function fmtFecha(fechaISO) {
   if (!fechaISO) return '';
   const d = new Date(fechaISO);
@@ -168,40 +192,131 @@ async function cargarConversaciones() {
       return;
     }
 
+    conversacionesPorTelefono = {};
+    data.conversaciones.forEach(c => { conversacionesPorTelefono[c.telefono] = c; });
+
     list.innerHTML = data.conversaciones.map(c => `
-      <div class="conv-item ${conversacionActiva === c.telefono ? 'active' : ''}" onclick="abrirConversacion('${c.telefono}', '${(c.nombre || c.telefono).replace(/'/g, "")}')">
+      <div class="conv-item ${conversacionActiva === c.telefono ? 'active' : ''}" data-tel="${esc(c.telefono)}">
         <div class="conv-top">
-          <span class="conv-name">${c.nombre || c.telefono}</span>
-          ${c.noLeido ? '<span class="unread-badge">nuevo</span>' : ''}
+          <span class="conv-name">${esc(c.nombre || c.telefono)}</span>
+          ${c.noLeido && conversacionActiva !== c.telefono ? '<span class="unread-badge">nuevo</span>' : ''}
         </div>
-        <span class="conv-phone">${c.telefono}</span>
-        <span class="conv-preview">${c.ultimoMensaje || ''}</span>
+        <span class="conv-phone">${esc(c.telefono)}</span>
+        <span class="conv-preview">${esc(c.ultimoMensaje || '')}</span>
       </div>
     `).join('');
+
+    if (conversacionActiva) actualizarVentana();
   } catch (e) {
     document.getElementById('convList').innerHTML = '<div class="empty-state">No se pudo conectar al backend. Verifica la URL arriba.</div>';
   }
 }
 
+// Clic en una conversación de la lista
+document.getElementById('convList').addEventListener('click', e => {
+  const item = e.target.closest('.conv-item');
+  if (!item) return;
+  const tel = item.dataset.tel;
+  const c = conversacionesPorTelefono[tel] || {};
+  abrirConversacion(tel, c.nombre || tel);
+});
+
 async function abrirConversacion(telefono, nombre) {
   conversacionActiva = telefono;
-  cargarConversaciones();
 
   const thread = document.getElementById('thread');
   thread.innerHTML = `
     <div class="thread-header">
-      <h3>${nombre}</h3>
-      <div class="sub">${telefono}</div>
+      <h3>${esc(nombre)}</h3>
+      <div class="sub">${esc(telefono)}</div>
     </div>
     <div class="thread-body" id="threadBody">Cargando mensajes…</div>
+    <div class="composer">
+      <div class="window-note" id="windowNote"></div>
+      <div class="composer-row">
+        <textarea id="replyText" rows="1" placeholder="Escribe tu respuesta… (Enter envía, Shift+Enter salto de línea)"></textarea>
+        <button id="btnSend" onclick="enviarRespuesta()">Enviar</button>
+      </div>
+      <div class="send-error" id="sendError"></div>
+    </div>
   `;
 
+  const ta = document.getElementById('replyText');
+  ta.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      enviarRespuesta();
+    }
+  });
+  ta.addEventListener('input', () => {
+    ta.style.height = 'auto';
+    ta.style.height = Math.min(ta.scrollHeight, 140) + 'px';
+  });
+
+  actualizarVentana();
+  apiFetch(`${backendUrl}/api/conversations/${encodeURIComponent(telefono)}/leido`, { method: 'POST' })
+    .then(() => cargarConversaciones())
+    .catch(() => {});
+
   await cargarHilo(telefono);
+  ta.focus();
+}
+
+// Muestra si la ventana de 24h de WhatsApp está abierta o cerrada
+function actualizarVentana() {
+  const note = document.getElementById('windowNote');
+  if (!note || !conversacionActiva) return;
+  const c = conversacionesPorTelefono[conversacionActiva] || {};
+  const ult = c.ultimoEntrante ? new Date(c.ultimoEntrante).getTime() : null;
+  if (ult && Date.now() - ult < VENTANA_MS) {
+    const restanH = Math.max(0, Math.floor((VENTANA_MS - (Date.now() - ult)) / 3600000));
+    note.className = 'window-note open';
+    note.textContent = `Ventana abierta: puedes responder libremente (quedan ~${restanH} h).`;
+  } else if (ult) {
+    note.className = 'window-note closed';
+    note.textContent = 'Pasaron más de 24 h desde el último mensaje del cliente: WhatsApp rechazará el texto libre (solo plantillas).';
+  } else {
+    note.className = 'window-note closed';
+    note.textContent = 'Sin registro de la hora del último mensaje del cliente; si pasaron más de 24 h, WhatsApp rechazará el envío.';
+  }
+}
+
+async function enviarRespuesta() {
+  const ta = document.getElementById('replyText');
+  const btn = document.getElementById('btnSend');
+  const errBox = document.getElementById('sendError');
+  if (!ta || !conversacionActiva) return;
+  const texto = ta.value.trim();
+  if (!texto) return;
+
+  btn.disabled = true;
+  btn.textContent = 'Enviando…';
+  errBox.style.display = 'none';
+  try {
+    const res = await apiFetch(`${backendUrl}/api/conversations/${encodeURIComponent(conversacionActiva)}/responder`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ texto })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) throw new Error(data.error || `Error ${res.status}`);
+    ta.value = '';
+    ta.style.height = 'auto';
+    await cargarHilo(conversacionActiva);
+    cargarConversaciones();
+  } catch (e) {
+    errBox.textContent = 'No se envió: ' + e.message;
+    errBox.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Enviar';
+    ta.focus();
+  }
 }
 
 async function cargarHilo(telefono) {
   try {
-    const res = await apiFetch(`${backendUrl}/api/conversations/${telefono}`);
+    const res = await apiFetch(`${backendUrl}/api/conversations/${encodeURIComponent(telefono)}`);
     const data = await res.json();
     const body = document.getElementById('threadBody');
     if (!body) return;
@@ -211,13 +326,15 @@ async function cargarHilo(telefono) {
       return;
     }
 
+    if (telefono !== conversacionActiva) return;
+    const estabaAbajo = body.scrollHeight - body.scrollTop - body.clientHeight < 60;
     body.innerHTML = data.mensajes.map(m => `
-      <div class="msg ${m.direccion}">
-        ${m.texto}
-        <span class="msg-time">${fmtFecha(m.fecha)}</span>
-      </div>
+      <div class="msg ${m.direccion === 'saliente' ? 'saliente' : 'entrante'}">${esc(m.texto)}<span class="msg-time">${m.origen === 'agente' ? 'Agente · ' : ''}${fmtFecha(m.fecha)}</span></div>
     `).join('');
-    body.scrollTop = body.scrollHeight;
+    if (estabaAbajo || body.dataset.cargado !== telefono) {
+      body.scrollTop = body.scrollHeight;
+      body.dataset.cargado = telefono;
+    }
   } catch (e) {
     console.error(e);
   }

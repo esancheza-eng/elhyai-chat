@@ -17,7 +17,9 @@ async function guardarMensaje({ telefono, nombre, texto, direccion }) {
         nombre: nombre || null,
         ultimoMensaje: texto,
         ultimaActualizacion: admin.firestore.FieldValue.serverTimestamp(),
-        ...(direccion === "entrante" ? { noLeido: true } : {})
+        ...(direccion === "entrante"
+          ? { noLeido: true, ultimoEntrante: admin.firestore.FieldValue.serverTimestamp() }
+          : {})
       },
       { merge: true }
     );
