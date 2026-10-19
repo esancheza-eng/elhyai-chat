@@ -105,6 +105,7 @@ app.get("/webhook", (req, res) => {
 
 // ── Asistente virtual (IA) ─────────────────────────────────
 const asistente = require("./services/asistente");
+const basico = require("./services/respuestas-basicas");
 
 const FALLBACK_TEXTO =
   "Gracias por su mensaje 🙌 En este momento no puedo responder, pero Christian le contestará personalmente lo antes posible.";
@@ -200,12 +201,20 @@ app.post("/webhook", async (req, res) => {
       await enviarYGuardar(from, nombreCliente, texto, "bot");
       console.log("Respuesta del asistente enviada", escalar ? "(requiere atención)" : "");
     } catch (aiError) {
-      console.log("Error del asistente:", aiError.message);
-      await ref.set({ requiereAtencion: true }, { merge: true });
-      // Aviso de respaldo, sin repetirlo en cada mensaje
-      if (Date.now() - tsToMs(conv.ultimoFallback) > FALLBACK_CADA_MS) {
-        const ok = await enviarYGuardar(from, nombreCliente, FALLBACK_TEXTO, "bot");
-        if (ok) await ref.set({ ultimoFallback: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+      // La IA no está disponible (sin saldo, error, etc.) → bot básico gratuito por menú
+      console.log("Error del asistente:", aiError.message, "→ usando bot básico");
+      try {
+        const { texto, escalar } = basico.responder(userText, historial);
+        if (escalar) await ref.set({ requiereAtencion: true }, { merge: true });
+        await enviarYGuardar(from, nombreCliente, texto, "bot");
+      } catch (basicError) {
+        // Último recurso: aviso de respaldo, sin repetirlo en cada mensaje
+        console.error("Error del bot básico:", basicError.message);
+        await ref.set({ requiereAtencion: true }, { merge: true });
+        if (Date.now() - tsToMs(conv.ultimoFallback) > FALLBACK_CADA_MS) {
+          const ok = await enviarYGuardar(from, nombreCliente, FALLBACK_TEXTO, "bot");
+          if (ok) await ref.set({ ultimoFallback: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+        }
       }
     }
   } catch (error) {
