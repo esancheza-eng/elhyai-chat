@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ElhyAi Chat — Informe de campañas</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#0d0f1a; --panel:#13162a; --surface:#1a1e35; --surface2:#20244a; --border:#252a45;
+  --accent:#6c63ff; --accent2:#00d4aa; --warn:#ffd166; --bad:#ff6b6b;
+  --text:#e8eaf6; --text2:#b4b9d6; --muted:#6b7299;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;}
+.topbar{min-height:56px;background:var(--panel);border-bottom:1px solid var(--border);display:flex;align-items:center;flex-wrap:wrap;padding:8px 24px;gap:12px;}
+.logo{font-family:'Syne',sans-serif;font-weight:800;font-size:18px;color:var(--accent);}
+.logo span{color:var(--accent2);}
+.nav-link{font-size:12px;color:var(--muted);text-decoration:none;padding:6px 12px;border-radius:8px;border:1px solid var(--border);}
+.nav-link:hover{color:var(--text);border-color:var(--accent);}
+.nav-link.active{color:var(--text);border-color:var(--accent);}
+.spacer{flex:1;}
+
+.config{display:flex;align-items:center;flex-wrap:wrap;gap:10px;padding:10px 24px;background:var(--panel);border-bottom:1px solid var(--border);font-size:12px;color:var(--muted);}
+.config input,.config select,.filters input,.filters select{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:7px 10px;color:var(--text);font-size:12px;font-family:inherit;}
+.config input{font-family:'JetBrains Mono',monospace;}
+.btn{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text);font-size:12px;cursor:pointer;font-family:inherit;}
+.btn:hover{border-color:var(--accent);}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--muted);display:inline-block;}
+.dot.ok{background:var(--accent2);} .dot.err{background:var(--bad);}
+
+main{max-width:1280px;margin:0 auto;padding:20px 24px 60px;}
+.head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:16px;}
+.head h1{font-family:'Syne',sans-serif;font-size:22px;}
+.head .sub{font-size:12px;color:var(--muted);margin-top:4px;}
+.camp-select{min-width:min(320px,100%);max-width:100%;}
+
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px;}
+.tile{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:14px 16px;}
+.tile .lbl{font-size:11px;color:var(--muted);}
+.tile .val{font-family:'Syne',sans-serif;font-size:26px;margin-top:4px;}
+.tile .pct{font-size:11px;color:var(--text2);margin-top:2px;}
+
+.grid2{display:grid;grid-template-columns:1.2fr 1fr;gap:12px;margin-bottom:16px;}
+@media (max-width:900px){.grid2{grid-template-columns:1fr;}}
+.grid2>*,.card{min-width:0;}
+@media (max-width:600px){
+  main{padding:16px 16px 48px;} .topbar,.config{padding-left:16px;padding-right:16px;}
+  .funnel-row{grid-template-columns:84px 1fr 64px;}
+  .config input{width:100% !important;} .filters input,.filters select{width:100%;min-width:0;}
+}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:16px;}
+.card h3{font-family:'Syne',sans-serif;font-size:14px;margin-bottom:4px;}
+.card .sub{font-size:11px;color:var(--muted);margin-bottom:12px;}
+
+/* Embudo: una sola serie, un solo color */
+.funnel-row{display:grid;grid-template-columns:110px 1fr 90px;align-items:center;gap:10px;margin-bottom:8px;font-size:12px;}
+.funnel-row .name{color:var(--text2);}
+.funnel-track{height:18px;background:var(--surface);border-radius:4px;position:relative;}
+.funnel-bar{height:100%;background:var(--accent);border-radius:0 4px 4px 0;min-width:2px;}
+.funnel-row .num{text-align:right;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;}
+
+table{width:100%;border-collapse:collapse;font-size:12px;}
+th{text-align:left;color:var(--muted);font-weight:500;padding:8px;border-bottom:1px solid var(--border);white-space:nowrap;position:sticky;top:0;background:var(--panel);}
+td{padding:8px;border-bottom:1px solid var(--border);vertical-align:top;}
+tr:hover td{background:var(--surface);}
+td.num,th.num{text-align:right;font-family:'JetBrains Mono',monospace;}
+.mono{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text2);}
+.resp{color:var(--text2);max-width:260px;}
+
+/* Estados: icono + texto (nunca solo color) */
+.chip{display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:2px 8px;border-radius:10px;border:1px solid var(--border);white-space:nowrap;}
+.chip.leido{color:var(--accent2);border-color:rgba(0,212,170,.4);}
+.chip.entregado{color:var(--text);}
+.chip.enviado{color:var(--muted);}
+.chip.no_entregado,.chip.fallido{color:var(--bad);border-color:rgba(255,107,107,.4);}
+.chip.si{color:var(--accent2);border-color:rgba(0,212,170,.4);}
+.chip.atender{color:var(--warn);border-color:rgba(255,209,102,.4);}
+
+.filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px;}
+.filters input{min-width:200px;}
+.table-wrap{max-height:560px;overflow:auto;border:1px solid var(--border);border-radius:10px;}
+.empty{padding:40px;text-align:center;color:var(--muted);font-size:13px;}
+.count{font-size:11px;color:var(--muted);}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo">ElhyAi <span>Chat</span></div>
+  <a class="nav-link" href="campanas-masivas.html">Campañas Masivas</a>
+  <a class="nav-link" href="conversaciones.html">💬 Conversaciones</a>
+  <a class="nav-link active" href="reportes.html">📊 Informe</a>
+  <div class="spacer"></div>
+  <a class="nav-link" href="index.html">← Menú</a>
+</div>
+
+<div class="config">
+  <span>Backend:</span>
+  <input type="text" id="backendUrl" value="https://elhyai-chat.onrender.com" style="width:260px">
+  <span>Clave:</span>
+  <input type="password" id="apiKey" placeholder="API_KEY" autocomplete="off" style="width:150px" onchange="guardarApiKey()">
+  <button class="btn" onclick="verificar()">Verificar</button>
+  <span><span class="dot" id="statusDot"></span> <span id="statusText">sin verificar</span></span>
+</div>
+
+<main>
+  <div class="head">
+    <div>
+      <h1>Informe de campañas</h1>
+      <div class="sub" id="campInfo">Elige una campaña para ver quién recibió, leyó y respondió.</div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <select id="campSelect" class="camp-select btn" onchange="cargarDetalle()">
+        <option value="">Cargando campañas…</option>
+      </select>
+      <button class="btn" onclick="cargarDetalle()">↻ Actualizar</button>
+      <button class="btn primary" onclick="exportar()">⬇ Exportar a Excel</button>
+    </div>
+  </div>
+
+  <div class="tiles" id="tiles"></div>
+
+  <div class="grid2">
+    <div class="card">
+      <h3>Embudo de la campaña</h3>
+      <div class="sub">Cuántos clientes llegaron a cada etapa</div>
+      <div id="funnel"><div class="empty">Sin datos</div></div>
+    </div>
+    <div class="card">
+      <h3>Por gestor</h3>
+      <div class="sub">Resultado de los clientes de cada gestor</div>
+      <div class="table-wrap" style="max-height:260px">
+        <table id="tablaGestor"><tbody><tr><td class="empty">Sin datos</td></tr></tbody></table>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Detalle por cliente</h3>
+    <div class="filters">
+      <input type="text" id="fBuscar" placeholder="Buscar nombre o teléfono…" oninput="pintarTabla()">
+      <select id="fEstado" onchange="pintarTabla()">
+        <option value="">Todos los estados</option>
+        <option value="leido">Leído</option>
+        <option value="entregado">Entregado (no leído)</option>
+        <option value="enviado">Enviado (sin confirmar)</option>
+        <option value="no_entregado">No entregado</option>
+        <option value="fallido">Fallido al enviar</option>
+      </select>
+      <select id="fResp" onchange="pintarTabla()">
+        <option value="">Respondieron y no</option>
+        <option value="si">Solo los que respondieron</option>
+        <option value="no">Solo los que no respondieron</option>
+        <option value="atender">Solo "atender"</option>
+      </select>
+      <select id="fGestor" onchange="pintarTabla()"><option value="">Todos los gestores</option></select>
+      <span class="count" id="count"></span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>Cliente</th><th>Teléfono</th><th class="num">Deuda</th><th class="num">Días</th>
+          <th>Gestor</th><th>Entrega</th><th>Respondió</th><th>Última respuesta</th>
+        </tr></thead>
+        <tbody id="tbody"><tr><td colspan="8" class="empty">Elige una campaña</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<script>
+let backendUrl = document.getElementById('backendUrl').value.replace(/\/$/, '');
+let filas = [];
+let campanaActual = null;
+
+// ── Clave de acceso (misma que en las otras páginas) ───
+const API_KEY_STORAGE = 'elhyai_api_key';
+function getApiKey() { return document.getElementById('apiKey').value.trim(); }
+function guardarApiKey() { try { localStorage.setItem(API_KEY_STORAGE, getApiKey()); } catch (e) {} }
+(function () { try { const k = localStorage.getItem(API_KEY_STORAGE); if (k) document.getElementById('apiKey').value = k; } catch (e) {} })();
+function apiFetch(url, options = {}) {
+  const headers = Object.assign({}, options.headers || {}, { 'x-api-key': getApiKey() });
+  return fetch(url, Object.assign({}, options, { headers })).then(res => {
+    if (res.status === 401) estado('err', 'clave incorrecta');
+    return res;
+  });
+}
+function estado(cls, txt) {
+  document.getElementById('statusDot').className = 'dot ' + cls;
+  document.getElementById('statusText').textContent = txt;
+}
+function esc(v) {
+  return String(v == null ? '' : v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+const money = n => '$' + Number(n || 0).toLocaleString('es-EC', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fecha = iso => iso ? new Date(iso).toLocaleString('es-EC', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }) : '';
+const pct = (a, b) => b ? Math.round(a * 100 / b) + '%' : '—';
+
+async function verificar() {
+  backendUrl = document.getElementById('backendUrl').value.replace(/\/$/, '');
+  guardarApiKey();
+  estado('', 'verificando…');
+  try {
+    const r = await apiFetch(`${backendUrl}/api/ping`);
+    if (r.status === 401) return;
+    if (!r.ok) throw new Error();
+    estado('ok', 'conectado');
+    cargarCampanas();
+  } catch (e) { estado('err', 'sin conexión'); }
+}
+
+async function cargarCampanas() {
+  const sel = document.getElementById('campSelect');
+  try {
+    const r = await apiFetch(`${backendUrl}/api/reportes/campanas`);
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error);
+    if (!d.campanas.length) { sel.innerHTML = '<option value="">Aún no hay campañas guardadas</option>'; return; }
+    const prev = sel.value;
+    sel.innerHTML = d.campanas.map(c =>
+      `<option value="${esc(c.id)}">${esc(c.nombre)} · ${fecha(c.inicio)} · ${c.total} clientes${c.enCurso ? ' · en curso' : ''}</option>`
+    ).join('');
+    if (prev && d.campanas.some(c => c.id === prev)) sel.value = prev;
+    cargarDetalle();
+  } catch (e) {
+    sel.innerHTML = '<option value="">No se pudieron cargar las campañas</option>';
+  }
+}
+
+async function cargarDetalle() {
+  const id = document.getElementById('campSelect').value;
+  if (!id) return;
+  document.getElementById('tbody').innerHTML = '<tr><td colspan="8" class="empty">Cargando…</td></tr>';
+  try {
+    const r = await apiFetch(`${backendUrl}/api/reportes/campanas/${encodeURIComponent(id)}`);
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error);
+    campanaActual = d.campana;
+    filas = d.filas;
+    document.getElementById('campInfo').textContent =
+      `${d.campana.nombre} · ${d.campana.plantilla ? 'plantilla ' + d.campana.plantilla + ' · ' : ''}inicio ${fecha(d.campana.inicio)}${d.campana.enCurso ? ' · EN CURSO' : ''}`;
+    const gestores = [...new Set(filas.map(f => f.cobrador).filter(Boolean))].sort();
+    const fg = document.getElementById('fGestor'); const prevG = fg.value;
+    fg.innerHTML = '<option value="">Todos los gestores</option>' + gestores.map(g => `<option>${esc(g)}</option>`).join('');
+    if (gestores.includes(prevG)) fg.value = prevG;
+    pintarResumen();
+    pintarTabla();
+  } catch (e) {
+    document.getElementById('tbody').innerHTML = `<tr><td colspan="8" class="empty">No se pudo cargar: ${esc(e.message)}</td></tr>`;
+  }
+}
+
+function contar(lista) {
+  const total = lista.length;
+  const entregados = lista.filter(f => f.estado === 'entregado' || f.estado === 'leido').length;
+  const leidos = lista.filter(f => f.estado === 'leido').length;
+  const noEnt = lista.filter(f => f.estado === 'no_entregado' || f.estado === 'fallido').length;
+  const resp = lista.filter(f => f.respondio).length;
+  const atender = lista.filter(f => f.atender).length;
+  const deuda = lista.reduce((s, f) => s + (f.deuda || 0), 0);
+  const deudaResp = lista.filter(f => f.respondio).reduce((s, f) => s + (f.deuda || 0), 0);
+  return { total, entregados, leidos, noEnt, resp, atender, deuda, deudaResp };
+}
+
+function pintarResumen() {
+  const c = contar(filas);
+  const tiles = [
+    ['Clientes', c.total, money(c.deuda) + ' en la campaña'],
+    ['Entregados', c.entregados, pct(c.entregados, c.total) + ' del total'],
+    ['Leídos', c.leidos, pct(c.leidos, c.total) + ' del total'],
+    ['Respondieron', c.resp, money(c.deudaResp) + ' de deuda'],
+    ['Por atender', c.atender, 'Requieren respuesta tuya'],
+    ['No entregados', c.noEnt, pct(c.noEnt, c.total) + ' del total']
+  ];
+  document.getElementById('tiles').innerHTML = tiles.map(t =>
+    `<div class="tile"><div class="lbl">${t[0]}</div><div class="val">${t[1].toLocaleString('es-EC')}</div><div class="pct">${t[2]}</div></div>`
+  ).join('');
+
+  const etapas = [['Enviados', c.total - filas.filter(f => f.estado === 'fallido').length], ['Entregados', c.entregados], ['Leídos', c.leidos], ['Respondieron', c.resp]];
+  const max = Math.max(1, etapas[0][1]);
+  document.getElementById('funnel').innerHTML = etapas.map(e =>
+    `<div class="funnel-row" title="${e[0]}: ${e[1]} de ${c.total} (${pct(e[1], c.total)})">
+       <span class="name">${e[0]}</span>
+       <div class="funnel-track"><div class="funnel-bar" style="width:${(e[1] / max * 100).toFixed(1)}%"></div></div>
+       <span class="num">${e[1]} · ${pct(e[1], c.total)}</span>
+     </div>`).join('');
+
+  const porG = {};
+  filas.forEach(f => { const g = f.cobrador || 'Sin gestor'; (porG[g] = porG[g] || []).push(f); });
+  const rows = Object.entries(porG).map(([g, l]) => [g, contar(l)]).sort((a, b) => b[1].total - a[1].total);
+  document.getElementById('tablaGestor').innerHTML =
+    `<thead><tr><th>Gestor</th><th class="num">Clientes</th><th class="num">Leídos</th><th class="num">Respond.</th><th class="num">Atender</th><th class="num">Deuda</th></tr></thead><tbody>` +
+    rows.map(([g, x]) => `<tr><td>${esc(g)}</td><td class="num">${x.total}</td><td class="num">${x.leidos}</td><td class="num">${x.resp}</td><td class="num">${x.atender}</td><td class="num">${money(x.deuda)}</td></tr>`).join('') +
+    '</tbody>';
+}
+
+const ETQ = {
+  leido: '✓✓ Leído', entregado: '✓✓ Entregado', enviado: '✓ Enviado',
+  no_entregado: '✗ No entregado', fallido: '✗ Fallido'
+};
+
+function filtradas() {
+  const q = document.getElementById('fBuscar').value.trim().toLowerCase();
+  const est = document.getElementById('fEstado').value;
+  const rsp = document.getElementById('fResp').value;
+  const g = document.getElementById('fGestor').value;
+  return filas.filter(f =>
+    (!q || f.nombre.toLowerCase().includes(q) || String(f.numero).includes(q)) &&
+    (!est || f.estado === est) &&
+    (!rsp || (rsp === 'si' && f.respondio) || (rsp === 'no' && !f.respondio) || (rsp === 'atender' && f.atender)) &&
+    (!g || f.cobrador === g)
+  );
+}
+
+function pintarTabla() {
+  const l = filtradas();
+  document.getElementById('count').textContent = `${l.length} de ${filas.length} clientes`;
+  if (!l.length) { document.getElementById('tbody').innerHTML = '<tr><td colspan="8" class="empty">Sin resultados</td></tr>'; return; }
+  document.getElementById('tbody').innerHTML = l.map(f => `
+    <tr>
+      <td>${esc(f.nombre)}</td>
+      <td class="mono">${esc(f.numero)}</td>
+      <td class="num">${money(f.deuda)}</td>
+      <td class="num">${f.dias}</td>
+      <td>${esc(f.cobrador)}</td>
+      <td><span class="chip ${f.estado}" title="${esc(f.motivo)}">${ETQ[f.estado] || f.estado}</span>${f.motivo ? `<div class="mono" style="margin-top:4px;max-width:220px">${esc(f.motivo.slice(0, 90))}</div>` : ''}</td>
+      <td>${f.respondio ? `<span class="chip si">💬 Sí</span><div class="mono" style="margin-top:4px">${fecha(f.fechaRespuesta)}</div>` : '<span class="mono">No</span>'}
+          ${f.atender ? '<div style="margin-top:4px"><span class="chip atender">⚠ Atender</span></div>' : ''}</td>
+      <td class="resp">${esc(f.ultimaRespuesta)}</td>
+    </tr>`).join('');
+}
+
+// Exporta lo que está filtrado a un archivo que Excel abre directamente
+function exportar() {
+  const l = filtradas();
+  if (!l.length) { alert('No hay datos para exportar'); return; }
+  const cols = ['Cliente', 'Teléfono', 'Deuda', 'Días', 'Gestor', 'Entrega', 'Motivo', 'Respondió', 'Fecha respuesta', 'Última respuesta', 'Atender'];
+  const celda = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+  const lineas = [cols.join(';')].concat(l.map(f => [
+    f.nombre, "'" + f.numero, String((f.deuda || 0).toFixed(2)).replace('.', ','), f.dias, f.cobrador,
+    (ETQ[f.estado] || f.estado).replace(/[✓✗]+\s*/, ''), f.motivo, f.respondio ? 'Sí' : 'No',
+    fecha(f.fechaRespuesta), f.ultimaRespuesta, f.atender ? 'Sí' : 'No'
+  ].map(celda).join(';')));
+  const blob = new Blob(['﻿' + lineas.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  const nombre = (campanaActual ? campanaActual.nombre : 'campana').replace(/[^\w\-]+/g, '_');
+  a.download = `informe_${nombre}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+verificar();
+</script>
+</body>
+</html>

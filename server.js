@@ -18,7 +18,7 @@ async function guardarMensaje({ telefono, nombre, texto, direccion, origen }) {
         ultimoMensaje: texto,
         ultimaActualizacion: admin.firestore.FieldValue.serverTimestamp(),
         ...(direccion === "entrante"
-          ? { noLeido: true, ultimoEntrante: admin.firestore.FieldValue.serverTimestamp() }
+          ? { noLeido: true, ultimoEntrante: admin.firestore.FieldValue.serverTimestamp(), ultimoTextoEntrante: texto }
           : {})
       },
       { merge: true }
@@ -86,6 +86,10 @@ app.use("/api/campaigns", campaignsRouter);
 // ── Rutas de Conversaciones (inbox) ────────────────────────
 const conversationsRouter = require("./routes/conversations");
 app.use("/api/conversations", conversationsRouter);
+
+// ── Informe de campañas (solo lectura) ─────────────────────
+const reportesRouter = require("./routes/reportes");
+app.use("/api/reportes", reportesRouter);
 
 // ── Webhook de WhatsApp (bot conversacional) ───────────────
 app.get("/webhook", (req, res) => {

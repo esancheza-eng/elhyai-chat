@@ -13,7 +13,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 .logo{font-family:'Syne',sans-serif;font-size:40px;font-weight:800;color:var(--accent);letter-spacing:-1px;}
 .logo span{color:var(--accent2);}
 .tagline{font-size:14px;color:var(--muted);margin-top:8px;}
-.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:20px;width:100%;max-width:640px;}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:20px;width:100%;max-width:960px;}
 .card{background:var(--panel);border:1px solid var(--border);border-radius:18px;padding:26px;text-decoration:none;color:var(--text);display:flex;flex-direction:column;gap:10px;transition:transform .2s,border-color .2s;}
 .card:hover{transform:translateY(-3px);border-color:var(--c);}
 .icon{font-size:34px;}
@@ -40,6 +40,12 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
     <div class="title">Conversaciones</div>
     <div class="desc">Revisa las respuestas de los clientes en tiempo real.</div>
     <div class="go">Abrir panel →</div>
+  </a>
+  <a href="reportes.html" class="card" style="--c:#ffd166">
+    <div class="icon">📊</div>
+    <div class="title">Informe</div>
+    <div class="desc">Quién recibió, leyó y respondió cada campaña, por gestor. Exporta a Excel.</div>
+    <div class="go">Abrir informe →</div>
   </a>
 </div>
 <div class="footer">ElhyAi Consultores &amp; Educación Digital</div>
