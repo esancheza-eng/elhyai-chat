@@ -7,14 +7,14 @@ const app = express();
 
 // Guarda un mensaje en Firestore, bajo el documento del cliente (por teléfono).
 // direccion: "entrante" (cliente -> nosotros) o "saliente" (nosotros -> cliente)
-async function guardarMensaje({ telefono, nombre, texto, direccion }) {
+async function guardarMensaje({ telefono, nombre, texto, direccion, origen }) {
   try {
     const conversacionRef = db.collection("conversaciones").doc(telefono);
 
     await conversacionRef.set(
       {
         telefono,
-        nombre: nombre || null,
+        ...(nombre ? { nombre } : {}),
         ultimoMensaje: texto,
         ultimaActualizacion: admin.firestore.FieldValue.serverTimestamp(),
         ...(direccion === "entrante"
@@ -27,6 +27,7 @@ async function guardarMensaje({ telefono, nombre, texto, direccion }) {
     await conversacionRef.collection("mensajes").add({
       texto,
       direccion,
+      ...(origen ? { origen } : {}),
       fecha: admin.firestore.FieldValue.serverTimestamp()
     });
   } catch (error) {
@@ -102,112 +103,113 @@ app.get("/webhook", (req, res) => {
   }
 });
 
-// System prompt: personalidad y contexto del bot conversacional.
-const SYSTEM_PROMPT = `Eres el asistente virtual de ElhyAi Consultores & Educación Digital,
-una consultora digital ecuatoriana. Respondes por WhatsApp de forma clara, cercana y profesional,
-en español. Mantén las respuestas breves (máximo 3-4 líneas), ya que es un chat de WhatsApp.
-Si te preguntan algo que no sabes o que requiere atención humana, indica que un asesor de
-ElhyAi se pondrá en contacto pronto.`;
+// ── Asistente virtual (IA) ─────────────────────────────────
+const asistente = require("./services/asistente");
 
-async function getOpenAIResponse(userMessage) {
-  const apiKey = process.env.OPENAI_API_KEY;
-  const openaiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      model: "gpt-4o-mini",
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: userMessage }
-      ],
-      max_tokens: 300,
-      temperature: 0.7
-    })
-  });
+const FALLBACK_TEXTO =
+  "Gracias por su mensaje 🙌 En este momento no puedo responder, pero Christian le contestará personalmente lo antes posible.";
+const FALLBACK_CADA_MS = 6 * 60 * 60 * 1000; // no repetir el aviso más de una vez cada 6 h
 
-  if (!openaiResponse.ok) {
-    const errText = await openaiResponse.text();
-    throw new Error(`OpenAI error ${openaiResponse.status}: ${errText}`);
+function tsToMs(ts) {
+  return ts && ts.toDate ? ts.toDate().getTime() : 0;
+}
+
+// Envía un texto por WhatsApp y lo guarda en el hilo
+async function enviarYGuardar(telefono, nombre, texto, origen) {
+  const response = await fetch(
+    `https://graph.facebook.com/v25.0/${process.env.PHONE_NUMBER_ID}/messages`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ messaging_product: "whatsapp", to: telefono, text: { body: texto } })
+    }
+  );
+  const data = await response.json();
+  if (!response.ok) {
+    console.error("WhatsApp no aceptó la respuesta:", JSON.stringify(data));
+    return false;
   }
-
-  const data = await openaiResponse.json();
-  return data.choices[0].message.content.trim();
+  await guardarMensaje({ telefono, nombre, texto, direccion: "saliente", origen });
+  return true;
 }
 
 app.post("/webhook", async (req, res) => {
-  console.log("Mensaje recibido");
+  // Respondemos a Meta de inmediato; el trabajo sigue en segundo plano
+  res.sendStatus(200);
+
   try {
-    const body = req.body;
-    if (
-      body.entry &&
-      body.entry[0].changes &&
-      body.entry[0].changes[0].value.messages
-    ) {
-      const message = body.entry[0].changes[0].value.messages[0];
-      const from = message.from;
-      const userText = message.text ? message.text.body : "";
+    const value = req.body?.entry?.[0]?.changes?.[0]?.value;
+    const message = value?.messages?.[0];
+    if (!message) return; // avisos de entregado/leído, etc.
 
-      // Nombre del cliente, si WhatsApp lo envía en el contacto
-      const contactos = body.entry[0].changes[0].value.contacts;
-      const nombreCliente = contactos && contactos[0] ? contactos[0].profile.name : null;
+    const from = message.from;
+    const nombreCliente = value.contacts?.[0]?.profile?.name || null;
 
-      const token = process.env.WHATSAPP_TOKEN;
-      const phone_number_id = process.env.PHONE_NUMBER_ID;
-
-      res.sendStatus(200);
-
-      // Guardamos el mensaje entrante del cliente
-      await guardarMensaje({
-        telefono: from,
-        nombre: nombreCliente,
-        texto: userText,
-        direccion: "entrante"
-      });
-
-      let replyText;
-      try {
-        replyText = await getOpenAIResponse(userText);
-        console.log("Respuesta de OpenAI generada");
-      } catch (aiError) {
-        console.log("Error de OpenAI:", aiError.message);
-        replyText = "Gracias por tu mensaje 🙌 En breve un asesor de ElhyAi te contactará.";
-      }
-
-      const response = await fetch(
-        `https://graph.facebook.com/v25.0/${phone_number_id}/messages`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            messaging_product: "whatsapp",
-            to: from,
-            text: { body: replyText }
-          })
-        }
-      );
-      const data = await response.json();
-      console.log(data);
-      console.log("Respuesta enviada");
-
-      // Guardamos la respuesta que enviamos al cliente
-      await guardarMensaje({
-        telefono: from,
-        nombre: nombreCliente,
-        texto: replyText,
-        direccion: "saliente"
-      });
+    // Texto del mensaje (o descripción si es foto, audio, documento...)
+    let userText = "";
+    let esArchivo = false;
+    if (message.type === "text") {
+      userText = message.text?.body || "";
+    } else if (message.type === "interactive" || message.type === "button") {
+      userText = message.button?.text || message.interactive?.button_reply?.title || message.interactive?.list_reply?.title || "";
     } else {
-      res.sendStatus(200);
+      esArchivo = true;
+      const tipos = { image: "📷 Imagen", audio: "🎤 Audio", video: "🎥 Video", document: "📄 Documento", sticker: "Sticker", location: "📍 Ubicación" };
+      const caption = message[message.type]?.caption;
+      userText = `[${tipos[message.type] || message.type}]${caption ? " " + caption : ""}`;
+    }
+
+    console.log("Mensaje recibido de", from, "tipo", message.type);
+    await guardarMensaje({ telefono: from, nombre: nombreCliente, texto: userText, direccion: "entrante" });
+
+    const ref = db.collection("conversaciones").doc(from);
+    const conv = (await ref.get()).data() || {};
+
+    // ¿Christian está atendiendo esta conversación? Entonces el bot no responde.
+    if (tsToMs(conv.botPausadoHasta) > Date.now()) {
+      console.log("Bot en pausa para", from);
+      return;
+    }
+
+    // Fotos, audios, documentos (ej. comprobantes): el bot no los entiende → avisar a Christian
+    if (esArchivo) {
+      await ref.set({ requiereAtencion: true }, { merge: true });
+      await enviarYGuardar(
+        from,
+        nombreCliente,
+        "Recibí su archivo 👍 Christian lo revisará y le responderá personalmente lo antes posible.",
+        "bot"
+      );
+      return;
+    }
+
+    // Memoria: últimos mensajes de la conversación (incluye el que acaba de llegar)
+    const snap = await ref
+      .collection("mensajes")
+      .orderBy("fecha", "desc")
+      .limit(asistente.MAX_HISTORIAL)
+      .get();
+    const historial = snap.docs.map((d) => d.data()).reverse();
+
+    try {
+      const { texto, escalar } = await asistente.responder(historial);
+      if (escalar) await ref.set({ requiereAtencion: true }, { merge: true });
+      await enviarYGuardar(from, nombreCliente, texto, "bot");
+      console.log("Respuesta del asistente enviada", escalar ? "(requiere atención)" : "");
+    } catch (aiError) {
+      console.log("Error del asistente:", aiError.message);
+      await ref.set({ requiereAtencion: true }, { merge: true });
+      // Aviso de respaldo, sin repetirlo en cada mensaje
+      if (Date.now() - tsToMs(conv.ultimoFallback) > FALLBACK_CADA_MS) {
+        const ok = await enviarYGuardar(from, nombreCliente, FALLBACK_TEXTO, "bot");
+        if (ok) await ref.set({ ultimoFallback: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+      }
     }
   } catch (error) {
-    console.log(error);
-    if (!res.headersSent) res.sendStatus(500);
+    console.error("Error en webhook:", error);
   }
 });
 

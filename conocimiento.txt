@@ -1,0 +1,87 @@
+# CONOCIMIENTO DEL ASISTENTE DE WHATSAPP — ElhyAi
+# Este archivo es lo que el asistente "sabe". Edítalo en GitHub cuando cambie algo.
+# Las líneas que empiezan con un solo # son notas para ti; el asistente no las lee.
+# Si un dato no está aquí, el asistente dirá que Christian le responderá personalmente.
+# Fuente principal: sitio web https://www.elhyai.com (repo elhycarsconsultores).
+
+## Datos de contacto
+- Sitio web: https://www.elhyai.com
+- WhatsApp / línea directa de Christian: +593 98 993 8910 (https://wa.me/593989938910)
+- Correo: info@elhyai.com
+- Base de operaciones: Milagro, Guayas, Ecuador.
+- LinkedIn: https://www.linkedin.com/in/esancheza
+- YouTube: https://www.youtube.com/@elhychristiansanchezarreag5811
+- Insignias verificadas (Credly): https://www.credly.com/users/elhy-christian-sanchez-arreaga
+
+## Quiénes somos
+- ElhyAi Consultores & Educación Digital es una firma de consultoría estratégica que ayuda a empresas, organizaciones y emprendedores a crecer integrando estrategia empresarial, analítica de datos e inteligencia artificial.
+- Lema: decisiones más inteligentes, empresas más competitivas, resultados medibles.
+- Enfoque: estrategia basada en datos, implementación de IA empresarial y transformación digital integral.
+
+## Oferta destacada: Diagnóstico Empresarial GRATUITO
+- El primer paso es un diagnóstico empresarial inicial sin costo: se conversa sobre los desafíos de la empresa y se define la hoja de ruta más adecuada.
+- Para solicitarlo, el asistente debe pedir: nombre completo, empresa u organización, correo, área de interés y el desafío principal. Luego Christian lo contacta.
+
+## Las 5 áreas de práctica
+1. Estrategia Empresarial: diagnóstico organizacional, planeación estratégica y hoja de ruta de crecimiento.
+2. Analítica de Datos y Business Intelligence: dashboards ejecutivos, KPIs y analítica predictiva.
+3. Implementación de Inteligencia Artificial: automatización inteligente, modelos predictivos y soluciones de IA para el negocio.
+4. Transformación Digital: digitalización de procesos, modernización operativa y cultura de innovación.
+5. Desarrollo Web Profesional: sitios y plataformas web corporativas e identidad de marca.
+
+## Servicios especializados (todos se cotizan a medida)
+- Consultoría en Recuperación de Cartera: estrategias y procesos para mejorar la recuperación de deuda y el flujo de caja.
+- Analítica Empresarial y Dashboards: tableros ejecutivos y herramientas de BI en tiempo real.
+- Implementación de IA en Procesos: automatización y soluciones de IA adaptadas a la empresa.
+- Desarrollo Web Corporativo: sitios web modernos, funcionales y optimizados.
+- Identidad Visual y Branding: logo, identidad corporativa y diseño de marca.
+- Contenido Digital con IA: videos promocionales, imágenes y contenido audiovisual generado con IA.
+- Capacitación y Desarrollo Empresarial: formación en estrategia, analítica de datos e IA para equipos directivos.
+- Branding Sonoro Corporativo: música e identidad sonora personalizada para marcas.
+- Diagnóstico Empresarial Integral: evaluación de procesos, tecnología, datos y estrategia con hoja de ruta de mejoras.
+- También: sistemas web a medida (inventarios, registro de pedidos, paneles de control), automatización de reportes y mensajería por WhatsApp para empresas (campañas, recordatorios y asistentes virtuales como este).
+- En el sitio web se pueden seleccionar varios servicios y pedir una propuesta por WhatsApp.
+
+## Metodología de trabajo (5 etapas)
+1. Diagnóstico: análisis de procesos, datos, tecnología y posición competitiva.
+2. Análisis: brechas, oportunidades y prioridades según impacto y viabilidad.
+3. Estrategia: hoja de ruta con objetivos, métricas de éxito y plan de acción.
+4. Implementación: ejecución acompañada (tecnología, procesos, capacitación y gestión del cambio).
+5. Resultados: medición de impacto, ajustes y transferencia de conocimiento.
+
+## Por qué elegirnos
+- Decisiones basadas en datos reales, no en intuición.
+- Automatización que libera al equipo de tareas de bajo valor.
+- Crecimiento con impacto tangible: eficiencia, reducción de costos y nuevas capacidades.
+- La IA se aplica en cada solución, no solo se asesora sobre ella.
+
+## Tipos de proyectos realizados (según testimonios del sitio)
+- Videos con inteligencia artificial para empresas.
+- Páginas web profesionales y automatización de procesos (por ejemplo, en el sector agrícola).
+- Canciones e identidad sonora para posicionar marcas.
+- Logos, imágenes e identidad visual corporativa.
+- Aplicaciones para automatizar procesos que antes eran manuales.
+
+## Sobre Christian Sánchez Arreaga (consultor principal)
+- Fundador y Director General de ElhyAi. MBA, consultor estratégico y especialista en transformación digital.
+- Más de 20 años de experiencia profesional en estrategia, tecnología, sector financiero y gestión de cobranzas.
+- Formación:
+  - MBA – Máster en Administración y Dirección de Empresas, EUDE Business School (Madrid, España).
+  - Máster en Sistemas de Información, mención en Business Intelligence y Big Data Analytics (UNEMI).
+  - Licenciado en Comunicación Social.
+  - 2 seminarios internacionales de Inteligencia Artificial en Madrid, España.
+- Certificaciones: Generative AI for Leaders (Vanderbilt University); Generative AI and Prompt Engineering Essentials (Edureka); Foundations of Cybersecurity, AI Fundamentals y AI for App Building (Google); Sesenta años de inteligencia artificial y Crédito y cobranza (UNAM); Diseño instruccional para el aprendizaje activo (Tecnológico de Monterrey); además de formación con Santander Open Academy.
+- Autor publicado en Amazon Kindle. Está preparando un nuevo libro: "Cobranza Inteligente", sobre IA aplicada a la cobranza.
+
+## ElhyAI Academy (cursos)
+- Plataforma de cursos: https://academy.elhyai.com
+- Cursos online con videos, que se pueden ver desde el celular.
+- Cursos presenciales para empresas (por ejemplo: motivación y trabajo en equipo), con certificado para cada participante.
+- Pago de cursos: transferencia o depósito bancario. El alumno envía el comprobante por este WhatsApp y Christian habilita el curso.
+- Los datos bancarios los envía Christian personalmente.
+
+## Datos que el asistente NO tiene (debe decir que Christian responderá)
+- Precios exactos de servicios y cursos (todo se cotiza a medida).
+- Horarios de atención y disponibilidad para reuniones.
+- Números de cuenta bancaria.
+- Fechas de lanzamiento de cursos o del nuevo libro.

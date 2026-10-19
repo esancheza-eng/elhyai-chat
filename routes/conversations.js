@@ -8,6 +8,8 @@ function toISO(ts) {
   return ts && ts.toDate ? ts.toDate().toISOString() : null;
 }
 
+const PAUSA_BOT_MS = 12 * 60 * 60 * 1000; // 12 horas
+
 // Solo aceptamos teléfonos con dígitos (formato de WhatsApp: 593...)
 function telefonoValido(t) {
   return /^[0-9]{8,15}$/.test(String(t || ""));
@@ -30,7 +32,9 @@ router.get("/", async (req, res) => {
         telefono: doc.id,
         ...data,
         ultimaActualizacion: toISO(data.ultimaActualizacion),
-        ultimoEntrante: toISO(data.ultimoEntrante)
+        ultimoEntrante: toISO(data.ultimoEntrante),
+        botPausadoHasta: toISO(data.botPausadoHasta),
+        ultimoFallback: toISO(data.ultimoFallback)
       };
     });
 
@@ -118,7 +122,10 @@ router.post("/:telefono/responder", async (req, res) => {
         telefono,
         ultimoMensaje: texto,
         ultimaActualizacion: admin.firestore.FieldValue.serverTimestamp(),
-        noLeido: false
+        noLeido: false,
+        requiereAtencion: false,
+        // Si respondes tú, el bot se calla en esta conversación por 12 horas
+        botPausadoHasta: admin.firestore.Timestamp.fromMillis(Date.now() + PAUSA_BOT_MS)
       },
       { merge: true }
     );
@@ -142,6 +149,33 @@ router.post("/:telefono/responder", async (req, res) => {
     }
     console.error("Error enviando respuesta del agente:", error.message);
     res.status(502).json({ ok: false, error: mensaje, codigoMeta: code || null });
+  }
+});
+
+// ======================================================
+// POST /api/conversations/:telefono/bot
+// Body: { activo: true|false }
+// Activa el bot en la conversación, o lo pausa 12 h ("Atender yo").
+// ======================================================
+router.post("/:telefono/bot", async (req, res) => {
+  try {
+    const { telefono } = req.params;
+    if (!telefonoValido(telefono)) {
+      return res.status(400).json({ ok: false, error: "Teléfono inválido" });
+    }
+    const activo = !!(req.body && req.body.activo);
+    await db.collection("conversaciones").doc(telefono).set(
+      {
+        botPausadoHasta: activo
+          ? admin.firestore.FieldValue.delete()
+          : admin.firestore.Timestamp.fromMillis(Date.now() + PAUSA_BOT_MS)
+      },
+      { merge: true }
+    );
+    res.json({ ok: true, activo });
+  } catch (error) {
+    console.error("Error cambiando estado del bot:", error.message);
+    res.status(500).json({ ok: false, error: error.message });
   }
 });
 

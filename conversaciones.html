@@ -74,6 +74,13 @@ body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text)
 .composer button:disabled { opacity:0.5; cursor:not-allowed; }
 .send-error { font-size:12px; color:var(--accent3); display:none; }
 .msg { white-space:pre-wrap; word-wrap:break-word; }
+.attn-badge { background:var(--warn); color:#0d0f1a; font-size:10px; font-weight:700; padding:2px 7px; border-radius:10px; }
+.badges { display:flex; gap:6px; }
+.thread-header { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.bot-toggle { border:1px solid var(--border); background:var(--surface); color:var(--text); border-radius:10px; padding:8px 14px; font-size:12px; cursor:pointer; white-space:nowrap; }
+.bot-toggle.on { border-color:var(--accent2); }
+.bot-toggle.off { border-color:var(--warn); }
+.bot-toggle:disabled { opacity:0.5; cursor:wait; }
 .thread-placeholder { flex:1; display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:13px; flex-direction:column; gap:8px; }
 </style>
 </head>
@@ -199,14 +206,17 @@ async function cargarConversaciones() {
       <div class="conv-item ${conversacionActiva === c.telefono ? 'active' : ''}" data-tel="${esc(c.telefono)}">
         <div class="conv-top">
           <span class="conv-name">${esc(c.nombre || c.telefono)}</span>
-          ${c.noLeido && conversacionActiva !== c.telefono ? '<span class="unread-badge">nuevo</span>' : ''}
+          <span class="badges">
+            ${c.requiereAtencion ? '<span class="attn-badge">atender</span>' : ''}
+            ${c.noLeido && conversacionActiva !== c.telefono ? '<span class="unread-badge">nuevo</span>' : ''}
+          </span>
         </div>
         <span class="conv-phone">${esc(c.telefono)}</span>
         <span class="conv-preview">${esc(c.ultimoMensaje || '')}</span>
       </div>
     `).join('');
 
-    if (conversacionActiva) actualizarVentana();
+    if (conversacionActiva) { actualizarVentana(); actualizarBotonBot(); }
   } catch (e) {
     document.getElementById('convList').innerHTML = '<div class="empty-state">No se pudo conectar al backend. Verifica la URL arriba.</div>';
   }
@@ -227,8 +237,11 @@ async function abrirConversacion(telefono, nombre) {
   const thread = document.getElementById('thread');
   thread.innerHTML = `
     <div class="thread-header">
-      <h3>${esc(nombre)}</h3>
-      <div class="sub">${esc(telefono)}</div>
+      <div>
+        <h3>${esc(nombre)}</h3>
+        <div class="sub">${esc(telefono)}</div>
+      </div>
+      <button class="bot-toggle" id="botToggle" onclick="cambiarBot()">…</button>
     </div>
     <div class="thread-body" id="threadBody">Cargando mensajes…</div>
     <div class="composer">
@@ -254,6 +267,7 @@ async function abrirConversacion(telefono, nombre) {
   });
 
   actualizarVentana();
+  actualizarBotonBot();
   apiFetch(`${backendUrl}/api/conversations/${encodeURIComponent(telefono)}/leido`, { method: 'POST' })
     .then(() => cargarConversaciones())
     .catch(() => {});
@@ -278,6 +292,47 @@ function actualizarVentana() {
   } else {
     note.className = 'window-note closed';
     note.textContent = 'Sin registro de la hora del último mensaje del cliente; si pasaron más de 24 h, WhatsApp rechazará el envío.';
+  }
+}
+
+// Estado del bot en la conversación abierta
+function botActivo(c) {
+  return !(c && c.botPausadoHasta && new Date(c.botPausadoHasta).getTime() > Date.now());
+}
+function actualizarBotonBot() {
+  const btn = document.getElementById('botToggle');
+  if (!btn || !conversacionActiva) return;
+  const c = conversacionesPorTelefono[conversacionActiva] || {};
+  if (botActivo(c)) {
+    btn.className = 'bot-toggle on';
+    btn.textContent = '🤖 Bot respondiendo · Atender yo';
+    btn.title = 'Pausa el bot 12 horas en esta conversación';
+  } else {
+    const hasta = new Date(c.botPausadoHasta);
+    btn.className = 'bot-toggle off';
+    btn.textContent = '🙋 Atiendes tú · Reactivar bot';
+    btn.title = 'Bot en pausa hasta ' + hasta.toLocaleString('es-EC', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
+  }
+}
+async function cambiarBot() {
+  const btn = document.getElementById('botToggle');
+  if (!btn || !conversacionActiva) return;
+  const c = conversacionesPorTelefono[conversacionActiva] || {};
+  const activar = !botActivo(c);
+  btn.disabled = true;
+  try {
+    const res = await apiFetch(`${backendUrl}/api/conversations/${encodeURIComponent(conversacionActiva)}/bot`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ activo: activar })
+    });
+    if (!res.ok) throw new Error('Error ' + res.status);
+    await cargarConversaciones();
+  } catch (e) {
+    alert('No se pudo cambiar el estado del bot: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    actualizarBotonBot();
   }
 }
 
@@ -329,7 +384,7 @@ async function cargarHilo(telefono) {
     if (telefono !== conversacionActiva) return;
     const estabaAbajo = body.scrollHeight - body.scrollTop - body.clientHeight < 60;
     body.innerHTML = data.mensajes.map(m => `
-      <div class="msg ${m.direccion === 'saliente' ? 'saliente' : 'entrante'}">${esc(m.texto)}<span class="msg-time">${m.origen === 'agente' ? 'Agente · ' : ''}${fmtFecha(m.fecha)}</span></div>
+      <div class="msg ${m.direccion === 'saliente' ? 'saliente' : 'entrante'}">${esc(m.texto)}<span class="msg-time">${m.origen === 'agente' ? 'Tú · ' : m.origen === 'bot' ? '🤖 Bot · ' : ''}${fmtFecha(m.fecha)}</span></div>
     `).join('');
     if (estabaAbajo || body.dataset.cargado !== telefono) {
       body.scrollTop = body.scrollHeight;
