@@ -5,6 +5,7 @@
 
 const XLSX = require('xlsx');
 const wa   = require('../services/whatsapp');
+const { db } = require('../config/firebase');
 
 // Estado en memoria del job activo
 // En producción usar Redis o DB
@@ -22,6 +23,27 @@ let activeJob = {
   finishedAt: null,
   campaignName: '',
 };
+
+// ── GUARDADO EN FIRESTORE (colección "campanas") ──────────
+// Permite ver el avance y continuar la campaña si Render se reinicia.
+let colaGuardado = Promise.resolve();
+function limpio(obj) { return JSON.parse(JSON.stringify(obj)); } // Firestore no acepta undefined
+
+function guardarCampana(extra = {}) {
+  if (!activeJob.id) return colaGuardado;
+  const id = activeJob.id;
+  const data = limpio({ ...activeJob, ...extra, actualizado: new Date().toISOString() });
+  colaGuardado = colaGuardado
+    .then(() => db.collection('campanas').doc(id).set(data, { merge: true }))
+    .catch(e => console.error('No se pudo guardar la campaña en Firestore:', e.message));
+  return colaGuardado;
+}
+
+let timerEstados = null;
+function guardarCampanaPronto() {
+  clearTimeout(timerEstados);
+  timerEstados = setTimeout(() => guardarCampana(), 2000);
+}
 
 // ── PARSEAR EXCEL ─────────────────────────────────────────
 exports.parseExcel = (req, res) => {
@@ -66,8 +88,8 @@ exports.parseExcel = (req, res) => {
     // Parsear clientes
     const clients = raw.map((row, i) => {
       const nombre   = String(row[colNombre] || '').trim();
-      const numero   = String(row[colNumero] || '').replace(/\s+/g,'').replace(/[^0-9+]/g,'');
-      const deuda    = parseFloat(String(row[colDeuda]  || '0').replace(/[^0-9.]/g,'')) || 0;
+      const numero   = normalizarTelefono(row[colNumero]);
+      const deuda    = parseMonto(row[colDeuda]);
       const dias     = parseInt(String(row[colDias]     || '0').replace(/[^0-9]/g,''))  || 0;
       const mensajePre = colMensaje  ? String(row[colMensaje]  || '').trim() : '';
       const cobrador   = colCobrador ? String(row[colCobrador] || '').trim() : '';
@@ -101,6 +123,9 @@ exports.startCampaign = async (req, res) => {
 
     if (activeJob.running) {
       return res.status(409).json({ ok: false, error: 'Ya hay una campaña en curso. Detén la actual primero.' });
+    }
+    if (restaurando) {
+      return res.status(409).json({ ok: false, error: 'El servidor está iniciando, intenta de nuevo en unos segundos.' });
     }
 
     const {
@@ -158,12 +183,33 @@ exports.startCampaign = async (req, res) => {
       campaignName,
     };
 
+    // Configuración del envío (se guarda para poder continuar tras un reinicio)
+    const cfg = { template, useTemplate, templateName, templateLang, delay, templateVars, headerType, headerUrl, buttonParam };
+
+    // Guardar la campaña completa en Firestore (clientes solo si caben en un documento)
+    const clientesJson = JSON.stringify(clients);
+    const guardarClientes = clientesJson.length < 800000;
+    if (!guardarClientes) console.warn('Campaña muy grande: no se guardan los clientes, no podrá continuar tras un reinicio.');
+    guardarCampana({ cfg: limpio(cfg), siguiente: 0, ...(guardarClientes ? { clients: JSON.parse(clientesJson) } : {}) });
+
     // Responder inmediatamente
     res.json({ ok: true, jobId: activeJob.id, message: `Iniciando campaña "${campaignName}" con ${clients.length} clientes.` });
 
     // Envío asíncrono
+    ejecutarEnvio(cfg, clients, 0);
+
+  } catch (err) {
+    activeJob.running = false;
+    console.error('startCampaign error:', err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+};
+
+// ── BUCLE DE ENVÍO (desde un índice, para poder continuar) ─
+function ejecutarEnvio(cfg, clients, desde) {
+  const { template, useTemplate, templateName, templateLang, delay = 10000, templateVars, headerType, headerUrl, buttonParam } = cfg;
     (async () => {
-      for (let i = 0; i < clients.length; i++) {
+      for (let i = desde; i < clients.length; i++) {
         // Control de pausa
         while (activeJob.paused && activeJob.running) {
           await wa.sleep(1000);
@@ -236,6 +282,9 @@ exports.startCampaign = async (req, res) => {
           console.error(`❌ [${i+1}/${activeJob.total}] ${c.nombre}: ${errMsg}`);
         }
 
+        // Guardar avance: si Render se reinicia, se continúa desde el siguiente cliente
+        await guardarCampana({ siguiente: i + 1 });
+
         // Delay entre mensajes (saltar en el último)
         if (i < clients.length - 1 && activeJob.running) {
           await wa.sleep(delay);
@@ -245,30 +294,61 @@ exports.startCampaign = async (req, res) => {
       activeJob.running    = false;
       activeJob.finishedAt = new Date().toISOString();
       activeJob.current    = '';
+      await guardarCampana();
       console.log(`\n🎉 Campaña finalizada. Enviados: ${activeJob.sent} | Fallidos: ${activeJob.failed}`);
     })();
+}
 
-  } catch (err) {
-    activeJob.running = false;
-    console.error('startCampaign error:', err);
-    res.status(500).json({ ok: false, error: err.message });
+// ── AL ARRANCAR: recuperar la última campaña ──────────────
+// Si quedó a medias por un reinicio de Render, continúa desde donde iba.
+let restaurando = true; // mientras se revisa Firestore al arrancar
+async function restaurarCampana() {
+  try {
+    const snap = await db.collection('campanas').orderBy('startedAt', 'desc').limit(1).get();
+    // Si ya se inició una campaña en este arranque, no tocar nada (evita envíos duplicados)
+    if (activeJob.id || !snap.docs.length) return;
+    const d = snap.docs[0].data();
+    const { cfg, clients, siguiente = 0, actualizado, ...job } = d;
+    activeJob = { ...activeJob, ...job, log: job.log || [] };
+
+    const aMedias = job.running && !job.finishedAt;
+    if (!aMedias) return; // terminada: solo se muestra el resultado
+
+    if (!cfg || !Array.isArray(clients) || siguiente >= clients.length) {
+      activeJob.running = false;
+      activeJob.finishedAt = activeJob.finishedAt || new Date().toISOString();
+      activeJob.current = '';
+      await guardarCampana();
+      return;
+    }
+    wa.checkCredentials();
+    console.log(`🔄 Continuando campaña "${activeJob.campaignName}" desde el cliente ${siguiente + 1} de ${clients.length}`);
+    ejecutarEnvio(cfg, clients, siguiente);
+  } catch (e) {
+    console.error('No se pudo restaurar la campaña:', e.message);
+  } finally {
+    restaurando = false;
   }
-};
+}
+restaurarCampana();
 
 // ── CONTROLES ─────────────────────────────────────────────
 exports.pauseCampaign = (req, res) => {
   activeJob.paused = true;
+  guardarCampana();
   res.json({ ok: true, message: 'Campaña pausada.' });
 };
 
 exports.resumeCampaign = (req, res) => {
   activeJob.paused = false;
+  guardarCampana();
   res.json({ ok: true, message: 'Campaña reanudada.' });
 };
 
 exports.stopCampaign = (req, res) => {
   activeJob.running = false;
   activeJob.paused  = false;
+  guardarCampana();
   res.json({ ok: true, message: 'Campaña detenida.' });
 };
 
@@ -291,6 +371,7 @@ exports.registrarEstado = (msgId, status, errorTexto) => {
   if ((ORDEN_ESTADO[status] || 0) < (ORDEN_ESTADO[entrada.entrega] || 0)) return true;
   entrada.entrega = status;
   if (errorTexto) entrada.entregaError = errorTexto;
+  guardarCampanaPronto();
   return true;
 };
 
@@ -327,6 +408,37 @@ function buildMessage(template, client) {
     .replace(/\{vencimiento\}/gi, client.dias + ' días')
     .replace(/\{cobrador\}/gi,    client.cobrador || '')
     .replace(/\{tienda\}/gi,      client.tienda   || '');
+}
+
+// ── Teléfonos de Ecuador ──────────────────────────────────
+// 0989938910 → 593989938910 · 989938910 → 593989938910 · +593 98… → 593…
+function normalizarTelefono(valor) {
+  let t = String(valor == null ? '' : valor).replace(/[^0-9]/g, '');
+  if (t.startsWith('00')) t = t.slice(2);                       // 00593… (formato internacional)
+  if (t.length === 10 && t.startsWith('09')) t = '593' + t.slice(1);
+  else if (t.length === 9 && t.startsWith('9')) t = '593' + t;  // Excel quitó el 0 inicial
+  return t;
+}
+
+// ── Montos: 120.5 · "120,50" · "$120.50" · "1.234,56" · "1,234.56" ──
+function parseMonto(valor) {
+  if (typeof valor === 'number') return isFinite(valor) ? valor : 0;
+  let s = String(valor == null ? '' : valor).replace(/[^0-9.,-]/g, '');
+  if (!s) return 0;
+  const ultComa = s.lastIndexOf(','), ultPunto = s.lastIndexOf('.');
+  if (ultComa > -1 && ultPunto > -1) {
+    // El separador que aparece al final es el decimal
+    if (ultComa > ultPunto) s = s.replace(/\./g, '').replace(',', '.');
+    else s = s.replace(/,/g, '');
+  } else if (ultComa > -1 || ultPunto > -1) {
+    const sep = ultComa > -1 ? ',' : '.';
+    const partes = s.split(sep);
+    // Un solo separador seguido de exactamente 3 dígitos = miles (1.234 / 1,234)
+    if (partes.length > 2 || (partes.length === 2 && partes[1].length === 3)) s = partes.join('');
+    else s = partes.join('.');
+  }
+  const n = parseFloat(s);
+  return isFinite(n) ? n : 0;
 }
 
 // ── Variables configurables de plantilla ──────────────────

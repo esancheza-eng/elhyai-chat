@@ -307,6 +307,11 @@ table.preview tr:hover td { background:var(--surface); }
               <div class="mini-stat">✅ <b id="miniSent">0</b> enviados</div>
               <div class="mini-stat">❌ <b id="miniFailed">0</b> fallidos</div>
             </div>
+            <div class="mini-stats">
+              <div class="mini-stat">📬 <b id="miniDelivered">0</b> entregados</div>
+              <div class="mini-stat">👁 <b id="miniRead">0</b> leídos</div>
+              <div class="mini-stat">⚠️ <b id="miniNotDelivered">0</b> no entregados</div>
+            </div>
           </div>
         </div>
         <div class="btn-row">
@@ -662,6 +667,12 @@ function renderProgress(job) {
   document.getElementById('progressSub').textContent = `${job.sent + job.failed} / ${job.total} clientes`;
   document.getElementById('miniSent').textContent = job.sent;
   document.getElementById('miniFailed').textContent = job.failed;
+
+  // Confirmaciones de Meta (llegan con unos segundos de retraso)
+  const logTodo = job.log || [];
+  document.getElementById('miniDelivered').textContent = logTodo.filter(l => l.entrega === 'delivered' || l.entrega === 'read').length;
+  document.getElementById('miniRead').textContent = logTodo.filter(l => l.entrega === 'read').length;
+  document.getElementById('miniNotDelivered').textContent = logTodo.filter(l => l.entrega === 'failed').length;
 
   const logWrap = document.getElementById('logWrap');
   logWrap.innerHTML = (job.log || []).slice().reverse().slice(0, 30).map(l => {
