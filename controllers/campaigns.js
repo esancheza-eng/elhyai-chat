@@ -110,11 +110,36 @@ exports.startCampaign = async (req, res) => {
       templateName,     // nombre de plantilla aprobada en Meta
       templateLang,     // código de idioma, ej: 'es'
       delay = 10000,    // ms entre mensajes
+      // ── Opcionales (plantillas de marketing). Si no se envían, todo funciona como antes ──
+      templateVars,     // ej. ["nombre", "\"Milagro\""]  → {{1}}, {{2}}…  ([] = sin variables)
+      headerType,       // 'image' | 'video' | 'document'
+      headerUrl,        // enlace público https:// del archivo del encabezado
+      buttonParam,      // valor para un botón con enlace dinámico (termina en {{1}})
       campaignName = 'Campaña ' + new Date().toLocaleDateString('es-EC'),
     } = req.body;
 
     if (!clients || !clients.length) {
       return res.status(400).json({ ok: false, error: 'Sin clientes para enviar.' });
+    }
+
+    // Validar opciones avanzadas (solo si se usan)
+    if (templateVars !== undefined && templateVars !== null) {
+      if (!Array.isArray(templateVars)) {
+        return res.status(400).json({ ok: false, error: 'templateVars debe ser una lista.' });
+      }
+      const malos = templateVars.filter(v => !esCampoValido(v));
+      if (malos.length) {
+        return res.status(400).json({ ok: false, error: `Variables no reconocidas: ${malos.join(', ')}. Usa: ${CAMPOS_VARIABLES.join(', ')} o texto fijo entre comillas.` });
+      }
+    }
+    if (headerType && !['image', 'video', 'document'].includes(headerType)) {
+      return res.status(400).json({ ok: false, error: 'Tipo de encabezado inválido.' });
+    }
+    if (headerType && !/^https:\/\/\S+$/i.test(String(headerUrl || ''))) {
+      return res.status(400).json({ ok: false, error: 'El encabezado necesita un enlace público que empiece con https://' });
+    }
+    if (buttonParam !== undefined && buttonParam !== null && buttonParam !== '' && !esCampoValido(buttonParam)) {
+      return res.status(400).json({ ok: false, error: `Valor del botón no reconocido: ${buttonParam}` });
     }
 
     // Reset job
@@ -154,8 +179,27 @@ exports.startCampaign = async (req, res) => {
           if (useTemplate && templateName) {
             // Plantilla aprobada Meta — variables dinámicas
             const deudaFmt = c.deuda.toLocaleString('es-EC', { minimumFractionDigits: 2 });
-            const variables = [c.nombre, deudaFmt, String(c.dias)];
+            // Sin opciones avanzadas: igual que siempre ({{1}} nombre, {{2}} deuda, {{3}} días)
+            const variables = Array.isArray(templateVars)
+              ? templateVars.map(v => valorCampo(v, c))
+              : [c.nombre, deudaFmt, String(c.dias)];
             const components = wa.buildTemplateComponents(variables);
+
+            // Encabezado con imagen / video / documento (opcional)
+            if (headerType && headerUrl) {
+              const media = { link: headerUrl };
+              if (headerType === 'document') media.filename = (headerUrl.split('/').pop() || 'documento.pdf').split('?')[0];
+              components.unshift({ type: 'header', parameters: [{ type: headerType, [headerType]: media }] });
+            }
+
+            // Botón con enlace dinámico (opcional)
+            if (buttonParam) {
+              components.push({
+                type: 'button', sub_type: 'url', index: '0',
+                parameters: [{ type: 'text', text: valorCampo(buttonParam, c) }]
+              });
+            }
+
             result = await wa.sendTemplateMessage(c.numero, templateName, templateLang || 'es', components);
           } else {
             // Texto libre personalizado
@@ -283,6 +327,31 @@ function buildMessage(template, client) {
     .replace(/\{vencimiento\}/gi, client.dias + ' días')
     .replace(/\{cobrador\}/gi,    client.cobrador || '')
     .replace(/\{tienda\}/gi,      client.tienda   || '');
+}
+
+// ── Variables configurables de plantilla ──────────────────
+const CAMPOS_VARIABLES = ['nombre', 'deuda', 'dias', 'cobrador', 'tienda', 'categoria', 'numero'];
+
+function esTextoFijo(v) {
+  const s = String(v || '').trim();
+  return s.length >= 2 && /^["'“”].*["'“”]$/.test(s);
+}
+
+function esCampoValido(v) {
+  return esTextoFijo(v) || CAMPOS_VARIABLES.includes(normalize(v));
+}
+
+// Devuelve el valor de un campo del cliente, o el texto fijo entre comillas.
+// Meta rechaza variables vacías, por eso se usa "-" si el dato no existe.
+function valorCampo(v, c) {
+  if (esTextoFijo(v)) return String(v).trim().slice(1, -1) || '-';
+  const campo = normalize(v);
+  let val;
+  if (campo === 'deuda') val = (c.deuda || 0).toLocaleString('es-EC', { minimumFractionDigits: 2 });
+  else if (campo === 'dias') val = String(c.dias ?? '');
+  else val = c[campo];
+  val = String(val == null ? '' : val).trim();
+  return val || '-';
 }
 
 function normalize(str) {

@@ -75,6 +75,10 @@ table.preview tr:hover td { background:var(--surface); }
 .form-group textarea { resize:vertical; min-height:80px; font-family:'JetBrains Mono',monospace; font-size:12px; }
 .form-group input:focus, .form-group textarea:focus, .form-group select:focus { border-color:var(--accent); }
 .form-group .hint { font-size:10px; color:var(--muted); margin-top:5px; }
+.adv-box { border:1px solid var(--border); border-radius:12px; padding:12px 14px; margin-bottom:16px; background:var(--surface); }
+.adv-box summary { cursor:pointer; font-size:12px; font-weight:600; color:var(--text); }
+.adv-box[open] summary { margin-bottom:12px; }
+.adv-preview { font-size:11px; color:var(--accent2); font-family:'JetBrains Mono',monospace; white-space:pre-wrap; margin-top:6px; }
 .toggle-row { display:flex; gap:0; border:1px solid var(--border); border-radius:10px; overflow:hidden; margin-bottom:16px; }
 .toggle-opt { flex:1; padding:10px; text-align:center; font-size:12px; font-weight:600; cursor:pointer; background:var(--surface); color:var(--muted); transition:all 0.2s; }
 .toggle-opt.active { background:var(--accent); color:#fff; }
@@ -190,6 +194,37 @@ table.preview tr:hover td { background:var(--surface); }
           <label>Código de idioma</label>
           <input type="text" id="templateLang" value="es" placeholder="es">
         </div>
+
+        <!-- OPCIONES AVANZADAS (marketing). Si se dejan vacías, la campaña funciona como siempre. -->
+        <details class="adv-box" id="advBox">
+          <summary>⚙️ Opciones avanzadas (plantillas de marketing: variables, imagen, botón) — opcional</summary>
+
+          <div class="form-group">
+            <label>Variables del cuerpo, en orden ({{1}}, {{2}}, …)</label>
+            <input type="text" id="tplVars" placeholder="Vacío = nombre, deuda, dias (como siempre)" oninput="previewAvanzado()">
+            <p class="hint">Separa con comas. Campos: nombre, deuda, dias, cobrador, tienda, categoria, numero. Texto fijo entre comillas, ej: "Milagro". Escribe <b>ninguna</b> si la plantilla no tiene variables.</p>
+          </div>
+
+          <div class="form-group">
+            <label>Encabezado multimedia</label>
+            <select id="tplHeaderType" onchange="previewAvanzado()">
+              <option value="">Ninguno (solo texto o sin encabezado)</option>
+              <option value="image">Imagen (JPG/PNG)</option>
+              <option value="video">Video (MP4)</option>
+              <option value="document">Documento (PDF)</option>
+            </select>
+            <input type="text" id="tplHeaderUrl" placeholder="https://chat.elhyai.com/promo.jpg" style="margin-top:8px" oninput="previewAvanzado()">
+            <p class="hint">Solo si la plantilla en Meta tiene encabezado de ese tipo. El enlace debe ser público y empezar con https://</p>
+          </div>
+
+          <div class="form-group">
+            <label>Botón con enlace dinámico (opcional)</label>
+            <input type="text" id="tplButtonParam" placeholder='Ej: "curso-ia"  o  numero' oninput="previewAvanzado()">
+            <p class="hint">Solo si el botón de enlace de la plantilla termina en {{1}}. Los botones fijos y de respuesta rápida no necesitan nada aquí.</p>
+          </div>
+
+          <div class="adv-preview" id="advPreview"></div>
+        </details>
       </div>
 
       <div id="freeFields" class="hidden">
@@ -470,6 +505,64 @@ function insertVar(v) {
   ta.focus();
 }
 
+// ── OPCIONES AVANZADAS DE PLANTILLA ───────────────────────
+const CAMPOS_TPL = ['nombre', 'deuda', 'dias', 'cobrador', 'tienda', 'categoria', 'numero'];
+function normCampo(v) {
+  return String(v).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[\s_\-]/g, '');
+}
+function esFijo(v) { return /^["'“”].*["'“”]$/.test(String(v).trim()) && String(v).trim().length >= 2; }
+function campoValido(v) { return esFijo(v) || CAMPOS_TPL.includes(normCampo(v)); }
+function valorEjemplo(v, c) {
+  if (esFijo(v)) return String(v).trim().slice(1, -1) || '-';
+  const k = normCampo(v);
+  if (k === 'deuda') return (c.deuda || 0).toLocaleString('es-EC', { minimumFractionDigits: 2 });
+  const val = c[k];
+  return (val === undefined || val === null || String(val).trim() === '') ? '-' : String(val);
+}
+
+// Lee las opciones avanzadas. Devuelve {} si no se usan (comportamiento de siempre).
+function leerAvanzado() {
+  const out = {}, errores = [];
+  const raw = document.getElementById('tplVars').value.trim();
+  if (raw) {
+    if (normCampo(raw) === 'ninguna' || normCampo(raw) === 'ninguno') out.templateVars = [];
+    else {
+      out.templateVars = raw.split(',').map(s => s.trim()).filter(Boolean);
+      const malos = out.templateVars.filter(v => !campoValido(v));
+      if (malos.length) errores.push('Variables no reconocidas: ' + malos.join(', '));
+    }
+  }
+  const tipo = document.getElementById('tplHeaderType').value;
+  const url = document.getElementById('tplHeaderUrl').value.trim();
+  if (tipo) {
+    if (!/^https:\/\/\S+$/i.test(url)) errores.push('El encabezado necesita un enlace que empiece con https://');
+    out.headerType = tipo; out.headerUrl = url;
+  }
+  const btn = document.getElementById('tplButtonParam').value.trim();
+  if (btn) {
+    if (!campoValido(btn)) errores.push('Valor del botón no reconocido: ' + btn);
+    out.buttonParam = btn;
+  }
+  return { out, errores };
+}
+
+function previewAvanzado() {
+  const box = document.getElementById('advPreview');
+  if (!box) return;
+  const { out, errores } = leerAvanzado();
+  if (errores.length) { box.style.color = 'var(--accent3)'; box.textContent = '⚠ ' + errores.join('\n⚠ '); return; }
+  box.style.color = '';
+  if (!Object.keys(out).length) { box.textContent = 'Sin opciones avanzadas: se envía {{1}} nombre, {{2}} deuda, {{3}} días.'; return; }
+  const c = clients[0] || { nombre: 'JUAN PÉREZ', deuda: 120.5, dias: 15, cobrador: '', tienda: 'MILAGRO', numero: '5939…' };
+  const lineas = ['Ejemplo con el primer cliente:'];
+  const vars = out.templateVars || ['nombre', 'deuda', 'dias'];
+  if (!vars.length) lineas.push('  (sin variables)');
+  vars.forEach((v, i) => lineas.push(`  {{${i + 1}}} = ${valorEjemplo(v, c)}`));
+  if (out.headerType) lineas.push(`  Encabezado ${out.headerType}: ${out.headerUrl}`);
+  if (out.buttonParam) lineas.push(`  Botón: …/${valorEjemplo(out.buttonParam, c)}`);
+  box.textContent = lineas.join('\n');
+}
+
 // ── INICIAR CAMPAÑA ──────────────────────────────────────
 async function startCampaign() {
   backendUrl = document.getElementById('backendUrl').value.replace(/\/$/, '');
@@ -487,6 +580,18 @@ async function startCampaign() {
     showToast('Ingresa el nombre exacto de la plantilla de Meta', true);
     goStep(2);
     return;
+  }
+
+  // Opciones avanzadas: solo se agregan si se llenaron
+  if (useTemplate) {
+    const { out, errores } = leerAvanzado();
+    if (errores.length) {
+      showToast(errores[0], true);
+      document.getElementById('advBox').open = true;
+      goStep(2);
+      return;
+    }
+    Object.assign(payload, out);
   }
 
   try {
