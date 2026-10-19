@@ -202,7 +202,7 @@ table.preview tr:hover td { background:var(--surface); }
           <div class="form-group">
             <label>Variables del cuerpo, en orden ({{1}}, {{2}}, …)</label>
             <input type="text" id="tplVars" placeholder="Vacío = nombre, deuda, dias (como siempre)" oninput="previewAvanzado()">
-            <p class="hint">Separa con comas. Campos: nombre, deuda, dias, cobrador, tienda, categoria, numero. Texto fijo entre comillas, ej: "Milagro". Escribe <b>ninguna</b> si la plantilla no tiene variables.</p>
+            <p class="hint">Separa con comas. Campos: nombre, mes, deuda, dias, cobrador, tienda, categoria, numero. Texto fijo entre comillas, ej: "Milagro". Escribe <b>ninguna</b> si la plantilla no tiene variables.</p>
           </div>
 
           <div class="form-group">
@@ -511,7 +511,7 @@ function insertVar(v) {
 }
 
 // ── OPCIONES AVANZADAS DE PLANTILLA ───────────────────────
-const CAMPOS_TPL = ['nombre', 'deuda', 'dias', 'cobrador', 'tienda', 'categoria', 'numero'];
+const CAMPOS_TPL = ['nombre', 'deuda', 'dias', 'cobrador', 'tienda', 'categoria', 'numero', 'mes'];
 function normCampo(v) {
   return String(v).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[\s_\-]/g, '');
 }

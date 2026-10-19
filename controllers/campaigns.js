@@ -77,6 +77,7 @@ exports.parseExcel = (req, res) => {
     const colCobrador = find('Nombre del Cobrador Actual','Cobrador','cobrador','COBRADOR');
     const colTienda   = find('Tienda Factura','Tienda','tienda','TIENDA');
     const colCategoria= find('Categoría Cliente','Categoria','categoria','CATEGORIA');
+    const colMes      = find('Mes','MES','Mes vencido','Mes Vencido','Mes de la cuota');
 
     if (!colNombre || !colNumero) {
       return res.status(400).json({
@@ -95,8 +96,9 @@ exports.parseExcel = (req, res) => {
       const cobrador   = colCobrador ? String(row[colCobrador] || '').trim() : '';
       const tienda     = colTienda   ? String(row[colTienda]   || '').trim() : '';
       const categoria  = colCategoria? String(row[colCategoria]|| '').trim() : '';
+      const mes        = colMes      ? String(row[colMes]      || '').trim().toLowerCase() : '';
 
-      return { id: i + 1, nombre, numero, deuda, dias, mensajePre, cobrador, tienda, categoria };
+      return { id: i + 1, nombre, numero, deuda, dias, mensajePre, cobrador, tienda, categoria, mes };
     }).filter(c => c.nombre && c.numero && c.numero.length >= 7);
 
     // Estadísticas
@@ -279,7 +281,7 @@ function ejecutarEnvio(cfg, clients, desde) {
             await db.collection('cobranza_clientes').doc(String(c.numero)).set(limpio({
               nombre: c.nombre, deuda: c.deuda, dias: c.dias,
               cobrador: c.cobrador || '', tienda: c.tienda || '',
-              mes: mesVar ? mesVar.slice(1, -1).toLowerCase().trim() : null,
+              mes: c.mes ? String(c.mes).toLowerCase().trim() : (mesVar ? mesVar.slice(1, -1).toLowerCase().trim() : null),
               campana: activeJob.campaignName, campanaId: activeJob.id,
               plantilla: useTemplate ? templateName : null,
               fecha: new Date().toISOString()
@@ -475,7 +477,7 @@ function parseMonto(valor) {
 }
 
 // ── Variables configurables de plantilla ──────────────────
-const CAMPOS_VARIABLES = ['nombre', 'deuda', 'dias', 'cobrador', 'tienda', 'categoria', 'numero'];
+const CAMPOS_VARIABLES = ['nombre', 'deuda', 'dias', 'cobrador', 'tienda', 'categoria', 'numero', 'mes'];
 
 function esTextoFijo(v) {
   const s = String(v || '').trim();
