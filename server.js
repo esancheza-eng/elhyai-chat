@@ -145,6 +145,44 @@ async function procesarEstados(statuses) {
   }
 }
 const basico = require("./services/respuestas-basicas");
+const botCobranza = require("./services/bot-cobranza");
+
+// Modo del bot (variable BOT_MODO en Render):
+//   "cobranza" (por defecto) → bot de cobranzas para todos
+//   "hibrido"  → cobranza solo a clientes que recibieron una campaña; ElhyAi al resto
+//   "elhyai"   → asistente de ElhyAi como antes
+const BOT_MODO = (process.env.BOT_MODO || "cobranza").toLowerCase();
+const PAUSA_GESTOR_MS = 12 * 60 * 60 * 1000;
+
+async function atenderCobranza({ from, nombreCliente, userText, esArchivo, ref, conv, cliente }) {
+  const r = botCobranza.responder({ texto: userText, esArchivo, cliente, conv });
+  const cambios = { cobranzaPaso: r.paso || null };
+  if (r.atender) cambios.requiereAtencion = true;
+  if (r.etiqueta) cambios.etiquetaCobranza = r.etiqueta;
+  if (r.pausar) cambios.botPausadoHasta = admin.firestore.Timestamp.fromMillis(Date.now() + PAUSA_GESTOR_MS);
+  await ref.set(cambios, { merge: true });
+
+  if (r.excluir) {
+    await db.collection("cobranza_clientes").doc(from).set(
+      { excluido: true, motivoExclusion: r.excluir, fechaExclusion: admin.firestore.FieldValue.serverTimestamp() },
+      { merge: true }
+    );
+  }
+  if (r.promesa) {
+    await db.collection("promesas_pago").add({
+      telefono: from,
+      nombre: (cliente && cliente.nombre) || nombreCliente || null,
+      cobrador: (cliente && cliente.cobrador) || null,
+      deuda: (cliente && cliente.deuda) || null,
+      fechaPromesa: r.promesa.fechaTexto,
+      fechaPromesaMs: r.promesa.fechaMs,
+      campana: (cliente && cliente.campana) || null,
+      creada: admin.firestore.FieldValue.serverTimestamp()
+    });
+  }
+  await enviarYGuardar(from, nombreCliente, r.texto, "bot");
+  console.log("Bot cobranza →", from, r.etiqueta || "");
+}
 
 const FALLBACK_TEXTO =
   "Gracias por su mensaje 🙌 En este momento no puedo responder, pero Christian le contestará personalmente lo antes posible.";
@@ -214,6 +252,21 @@ app.post("/webhook", async (req, res) => {
     if (tsToMs(conv.botPausadoHasta) > Date.now()) {
       console.log("Bot en pausa para", from);
       return;
+    }
+
+    // ── Bot de cobranzas ──
+    if (BOT_MODO !== "elhyai") {
+      let cliente = null;
+      try {
+        const cd = await db.collection("cobranza_clientes").doc(from).get();
+        cliente = cd.exists ? cd.data() : null;
+      } catch (e) {
+        console.error("No se pudo leer cobranza_clientes:", e.message);
+      }
+      if (BOT_MODO === "cobranza" || cliente) {
+        await atenderCobranza({ from, nombreCliente, userText, esArchivo, ref, conv, cliente });
+        return;
+      }
     }
 
     // Fotos, audios, documentos (ej. comprobantes): el bot no los entiende → avisar a Christian

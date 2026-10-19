@@ -219,6 +219,22 @@ function ejecutarEnvio(cfg, clients, desde) {
         const c = clients[i];
         activeJob.current = c.nombre;
 
+        // No escribir a quien pidió no recibir mensajes o dijo "número equivocado"
+        try {
+          const ex = await db.collection('cobranza_clientes').doc(String(c.numero)).get();
+          if (ex.exists && ex.data().excluido) {
+            activeJob.skipped++;
+            activeJob.log.push({
+              id: c.id, nombre: c.nombre, numero: c.numero, deuda: c.deuda, dias: c.dias,
+              status: 'omitido',
+              error: ex.data().motivoExclusion === 'equivocado' ? 'Omitido: número equivocado' : 'Omitido: pidió no recibir mensajes',
+              ts: new Date().toLocaleTimeString('es-EC'),
+            });
+            await guardarCampana({ siguiente: i + 1 });
+            continue;
+          }
+        } catch (e) { /* si falla la consulta, se envía normal */ }
+
         try {
           let result;
 
@@ -254,6 +270,21 @@ function ejecutarEnvio(cfg, clients, desde) {
           }
 
           activeJob.sent++;
+
+          // Guardar los datos que recibió el cliente (los usa el bot de cobranza para "consultar saldo")
+          try {
+            const mesVar = Array.isArray(templateVars)
+              ? templateVars.map(v => String(v).trim()).find(v => /^["'“”].*["'“”]$/.test(v) && MESES_TXT.includes(v.slice(1, -1).toLowerCase().trim()))
+              : null;
+            await db.collection('cobranza_clientes').doc(String(c.numero)).set(limpio({
+              nombre: c.nombre, deuda: c.deuda, dias: c.dias,
+              cobrador: c.cobrador || '', tienda: c.tienda || '',
+              mes: mesVar ? mesVar.slice(1, -1).toLowerCase().trim() : null,
+              campana: activeJob.campaignName, campanaId: activeJob.id,
+              plantilla: useTemplate ? templateName : null,
+              fecha: new Date().toISOString()
+            }), { merge: true });
+          } catch (e) { console.error('No se pudo guardar cobranza_clientes:', e.message); }
           activeJob.log.push({
             id:      c.id,
             nombre:  c.nombre,
@@ -409,6 +440,8 @@ function buildMessage(template, client) {
     .replace(/\{cobrador\}/gi,    client.cobrador || '')
     .replace(/\{tienda\}/gi,      client.tienda   || '');
 }
+
+const MESES_TXT = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
 
 // ── Teléfonos de Ecuador ──────────────────────────────────
 // 0989938910 → 593989938910 · 989938910 → 593989938910 · +593 98… → 593…

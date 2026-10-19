@@ -75,6 +75,10 @@ td.num,th.num{text-align:right;font-family:'JetBrains Mono',monospace;}
 .chip.entregado{color:var(--text);}
 .chip.enviado{color:var(--muted);}
 .chip.no_entregado,.chip.fallido{color:var(--bad);border-color:rgba(255,107,107,.4);}
+.chip.omitido{color:var(--muted);border-style:dashed;}
+.chip.hoy{color:var(--warn);border-color:rgba(255,209,102,.4);}
+.chip.vencida{color:var(--bad);border-color:rgba(255,107,107,.4);}
+.chip.proxima{color:var(--text2);}
 .chip.si{color:var(--accent2);border-color:rgba(0,212,170,.4);}
 .chip.atender{color:var(--warn);border-color:rgba(255,209,102,.4);}
 
@@ -137,6 +141,28 @@ td.num,th.num{text-align:right;font-family:'JetBrains Mono',monospace;}
     </div>
   </div>
 
+  <div class="card" style="margin-bottom:16px">
+    <h3>Promesas de pago</h3>
+    <div class="sub">Fechas que los clientes acordaron con el bot (opción 4). Llama a los que no cumplieron.</div>
+    <div class="filters">
+      <select id="fPromesa" onchange="pintarPromesas()">
+        <option value="">Todas</option>
+        <option value="hoy">Vencen hoy</option>
+        <option value="vencida">Ya pasó la fecha</option>
+        <option value="proxima">Próximas</option>
+      </select>
+      <select id="fPromGestor" onchange="pintarPromesas()"><option value="">Todos los gestores</option></select>
+      <button class="btn" onclick="exportarPromesas()">⬇ Exportar promesas</button>
+      <span class="count" id="countProm"></span>
+    </div>
+    <div class="table-wrap" style="max-height:320px">
+      <table>
+        <thead><tr><th>Fecha prometida</th><th>Estado</th><th>Cliente</th><th>Teléfono</th><th class="num">Deuda</th><th>Gestor</th><th>Registrada</th></tr></thead>
+        <tbody id="tbodyProm"><tr><td colspan="7" class="empty">Sin promesas todavía</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
   <div class="card">
     <h3>Detalle por cliente</h3>
     <div class="filters">
@@ -148,6 +174,7 @@ td.num,th.num{text-align:right;font-family:'JetBrains Mono',monospace;}
         <option value="enviado">Enviado (sin confirmar)</option>
         <option value="no_entregado">No entregado</option>
         <option value="fallido">Fallido al enviar</option>
+        <option value="omitido">Omitido (no contactar)</option>
       </select>
       <select id="fResp" onchange="pintarTabla()">
         <option value="">Respondieron y no</option>
@@ -208,6 +235,7 @@ async function verificar() {
     if (!r.ok) throw new Error();
     estado('ok', 'conectado');
     cargarCampanas();
+    cargarPromesas();
   } catch (e) { estado('err', 'sin conexión'); }
 }
 
@@ -298,7 +326,7 @@ function pintarResumen() {
 
 const ETQ = {
   leido: '✓✓ Leído', entregado: '✓✓ Entregado', enviado: '✓ Enviado',
-  no_entregado: '✗ No entregado', fallido: '✗ Fallido'
+  no_entregado: '✗ No entregado', fallido: '✗ Fallido', omitido: '⊘ Omitido'
 };
 
 function filtradas() {
@@ -350,6 +378,58 @@ function exportar() {
   a.download = `informe_${nombre}.csv`;
   a.click();
   URL.revokeObjectURL(a.href);
+}
+
+// ── Promesas de pago ─────────────────────────────────
+let promesas = [];
+function estadoPromesa(p) {
+  const d = new Date(Date.now() - 5 * 3600 * 1000);
+  const hoy = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  if (p.fechaPromesaMs === hoy) return 'hoy';
+  return p.fechaPromesaMs < hoy ? 'vencida' : 'proxima';
+}
+const ETQ_PROM = { hoy: '⏰ Vence hoy', vencida: '⚠ Ya pasó', proxima: '📅 Próxima' };
+async function cargarPromesas() {
+  try {
+    const r = await apiFetch(`${backendUrl}/api/reportes/promesas`);
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error);
+    promesas = d.promesas;
+    const gs = [...new Set(promesas.map(p => p.cobrador).filter(Boolean))].sort();
+    const sel = document.getElementById('fPromGestor'); const prev = sel.value;
+    sel.innerHTML = '<option value="">Todos los gestores</option>' + gs.map(g => `<option>${esc(g)}</option>`).join('');
+    if (gs.includes(prev)) sel.value = prev;
+    pintarPromesas();
+  } catch (e) {
+    document.getElementById('tbodyProm').innerHTML = '<tr><td colspan="7" class="empty">No se pudieron cargar las promesas</td></tr>';
+  }
+}
+function promesasFiltradas() {
+  const fe = document.getElementById('fPromesa').value;
+  const fg = document.getElementById('fPromGestor').value;
+  return promesas.filter(p => (!fe || estadoPromesa(p) === fe) && (!fg || p.cobrador === fg))
+    .sort((a, b) => a.fechaPromesaMs - b.fechaPromesaMs);
+}
+function pintarPromesas() {
+  const l = promesasFiltradas();
+  document.getElementById('countProm').textContent = `${l.length} promesas`;
+  if (!l.length) { document.getElementById('tbodyProm').innerHTML = '<tr><td colspan="7" class="empty">Sin promesas</td></tr>'; return; }
+  document.getElementById('tbodyProm').innerHTML = l.map(p => {
+    const e = estadoPromesa(p);
+    return `<tr><td class="mono">${esc(p.fechaPromesa)}</td><td><span class="chip ${e}">${ETQ_PROM[e]}</span></td>
+      <td>${esc(p.nombre)}</td><td class="mono">${esc(p.telefono)}</td><td class="num">${money(p.deuda)}</td>
+      <td>${esc(p.cobrador)}</td><td class="mono">${fecha(p.creada)}</td></tr>`;
+  }).join('');
+}
+function exportarPromesas() {
+  const l = promesasFiltradas();
+  if (!l.length) { alert('No hay promesas para exportar'); return; }
+  const celda = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+  const lineas = [['Fecha prometida','Estado','Cliente','Teléfono','Deuda','Gestor','Registrada','Campaña'].join(';')]
+    .concat(l.map(p => [p.fechaPromesa, ETQ_PROM[estadoPromesa(p)].replace(/^\S+\s/, ''), p.nombre, "'" + p.telefono,
+      String((p.deuda || 0).toFixed(2)).replace('.', ','), p.cobrador, fecha(p.creada), p.campana].map(celda).join(';')));
+  const blob = new Blob(['\ufeff' + lineas.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'promesas_de_pago.csv'; a.click(); URL.revokeObjectURL(a.href);
 }
 
 verificar();

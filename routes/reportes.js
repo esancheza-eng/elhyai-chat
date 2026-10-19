@@ -81,7 +81,8 @@ router.get("/campanas/:id", async (req, res) => {
       const respondio = !!(ultEntMs && inicioMs && ultEntMs >= inicioMs);
 
       let estado;
-      if (l.status !== "ok") estado = "fallido";
+      if (l.status === "omitido") estado = "omitido";
+      else if (l.status !== "ok") estado = "fallido";
       else if (l.entrega === "failed") estado = "no_entregado";
       else if (l.entrega === "read") estado = "leido";
       else if (l.entrega === "delivered") estado = "entregado";
@@ -120,6 +121,31 @@ router.get("/campanas/:id", async (req, res) => {
     });
   } catch (error) {
     console.error("Error en informe de campaña:", error.message);
+    res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+// GET /api/reportes/promesas → promesas de pago registradas por el bot
+router.get("/promesas", async (req, res) => {
+  try {
+    const snap = await db.collection("promesas_pago").orderBy("creada", "desc").limit(500).get();
+    const promesas = snap.docs.map(d => {
+      const p = d.data();
+      return {
+        id: d.id,
+        nombre: p.nombre || "",
+        telefono: p.telefono || "",
+        cobrador: p.cobrador || "",
+        deuda: p.deuda || 0,
+        fechaPromesa: p.fechaPromesa || "",
+        fechaPromesaMs: p.fechaPromesaMs || 0,
+        campana: p.campana || "",
+        creada: toISO(p.creada)
+      };
+    });
+    res.json({ ok: true, promesas });
+  } catch (error) {
+    console.error("Error listando promesas:", error.message);
     res.status(500).json({ ok: false, error: error.message });
   }
 });

@@ -1,0 +1,22 @@
+# CONFIGURACIÓN DEL BOT DE COBRANZAS MARCIMEX
+# Edítalo en GitHub cuando cambie algo (lápiz ✏️ → Commit changes).
+# Las líneas que empiezan con un solo # son notas; el bot no las lee.
+# No borres los títulos que empiezan con ## (el bot los usa para ubicar cada texto).
+
+## EMPRESA
+Marcimex
+
+## HORARIO
+de 08:30 a 18:00
+
+## LUGARES_PAGO
+Puede realizar su pago en:
+• Cualquier agencia Marcimex - Moto Power a nivel nacional.
+• Con su gestor de cobranzas asignado.
+Por favor conserve su comprobante y envíenos una foto por este medio.
+
+## DESPEDIDA_EQUIVOCADO
+Disculpe la molestia 🙏 Hemos registrado que este número no corresponde al cliente y no volveremos a escribirle.
+
+## DESPEDIDA_SALIR
+Entendido ✅ Hemos registrado su solicitud y no volverá a recibir recordatorios por este medio.

@@ -207,6 +207,7 @@ async function cargarConversaciones() {
         <div class="conv-top">
           <span class="conv-name">${esc(c.nombre || c.telefono)}</span>
           <span class="badges">
+            ${c.etiquetaCobranza ? `<span class="unread-badge" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">${esc(c.etiquetaCobranza)}</span>` : ''}
             ${c.requiereAtencion ? '<span class="attn-badge">atender</span>' : ''}
             ${c.noLeido && conversacionActiva !== c.telefono ? '<span class="unread-badge">nuevo</span>' : ''}
           </span>
