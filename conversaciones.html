@@ -370,6 +370,37 @@ async function enviarRespuesta() {
   }
 }
 
+// ── Fotos, audios y documentos enviados por el cliente ──
+const mediaCache = {};
+function htmlMedia(m) {
+  if (!m.mediaId) return '';
+  const id = esc(m.mediaId);
+  if (m.mediaTipo === 'image') return `<img class="msg-media" data-media="${id}" alt="Imagen" title="Clic para ampliar" style="display:block;max-width:260px;max-height:320px;border-radius:8px;margin-bottom:6px;cursor:pointer;background:#222;min-height:60px" onclick="abrirMedia('${id}')">`;
+  if (m.mediaTipo === 'audio') return `<audio controls data-media="${id}" style="display:block;max-width:260px;margin-bottom:6px"></audio>`;
+  if (m.mediaTipo === 'video') return `<video controls data-media="${id}" style="display:block;max-width:260px;border-radius:8px;margin-bottom:6px"></video>`;
+  return `<button type="button" onclick="abrirMedia('${id}')" style="display:block;margin-bottom:6px;padding:6px 10px;border-radius:6px;border:0;cursor:pointer">📎 Abrir ${esc(m.mediaNombre || 'archivo')}</button>`;
+}
+async function obtenerMedia(id) {
+  if (mediaCache[id]) return mediaCache[id];
+  const res = await apiFetch(`${backendUrl}/api/media/${encodeURIComponent(id)}`);
+  if (!res.ok) throw new Error('no disponible');
+  mediaCache[id] = URL.createObjectURL(await res.blob());
+  return mediaCache[id];
+}
+function cargarMedias(cont) {
+  cont.querySelectorAll('[data-media]').forEach(el => {
+    obtenerMedia(el.dataset.media).then(url => {
+      el.onload = () => { if (cont.scrollHeight - cont.scrollTop - cont.clientHeight < 400) cont.scrollTop = cont.scrollHeight; };
+      el.src = url;
+    })
+      .catch(() => { el.replaceWith(Object.assign(document.createElement('div'), { textContent: '(archivo no disponible)', style: 'font-size:12px;opacity:.7' })); });
+  });
+}
+async function abrirMedia(id) {
+  try { window.open(await obtenerMedia(id), '_blank'); }
+  catch (e) { alert('Este archivo ya no está disponible en WhatsApp.'); }
+}
+
 async function cargarHilo(telefono) {
   try {
     const res = await apiFetch(`${backendUrl}/api/conversations/${encodeURIComponent(telefono)}`);
@@ -384,9 +415,14 @@ async function cargarHilo(telefono) {
 
     if (telefono !== conversacionActiva) return;
     const estabaAbajo = body.scrollHeight - body.scrollTop - body.clientHeight < 60;
-    body.innerHTML = data.mensajes.map(m => `
-      <div class="msg ${m.direccion === 'saliente' ? 'saliente' : 'entrante'}">${esc(m.texto)}<span class="msg-time">${m.origen === 'agente' ? 'Tú · ' : m.origen === 'bot' ? '🤖 Bot · ' : ''}${fmtFecha(m.fecha)}</span></div>
+    const html = data.mensajes.map(m => `
+      <div class="msg ${m.direccion === 'saliente' ? 'saliente' : 'entrante'}">${htmlMedia(m)}${esc(m.texto)}<span class="msg-time">${m.origen === 'agente' ? 'Tú · ' : m.origen === 'bot' ? '🤖 Bot · ' : ''}${fmtFecha(m.fecha)}</span></div>
     `).join('');
+    // Solo redibuja si hubo cambios (así no se corta un audio ni parpadean las fotos)
+    if (body.dataset.html === html && body.dataset.cargado === telefono) return;
+    body.dataset.html = html;
+    body.innerHTML = html;
+    cargarMedias(body);
     if (estabaAbajo || body.dataset.cargado !== telefono) {
       body.scrollTop = body.scrollHeight;
       body.dataset.cargado = telefono;

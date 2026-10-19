@@ -7,7 +7,7 @@ const app = express();
 
 // Guarda un mensaje en Firestore, bajo el documento del cliente (por teléfono).
 // direccion: "entrante" (cliente -> nosotros) o "saliente" (nosotros -> cliente)
-async function guardarMensaje({ telefono, nombre, texto, direccion, origen }) {
+async function guardarMensaje({ telefono, nombre, texto, direccion, origen, media }) {
   try {
     const conversacionRef = db.collection("conversaciones").doc(telefono);
 
@@ -28,6 +28,7 @@ async function guardarMensaje({ telefono, nombre, texto, direccion, origen }) {
       texto,
       direccion,
       ...(origen ? { origen } : {}),
+      ...(media && media.id ? { mediaId: media.id, mediaTipo: media.tipo || "", mediaMime: media.mime || "", mediaNombre: media.nombre || "" } : {}),
       fecha: admin.firestore.FieldValue.serverTimestamp()
     });
   } catch (error) {
@@ -77,6 +78,29 @@ app.use("/api", requireApiKey);
 // Ruta protegida para que las páginas verifiquen URL + clave
 app.get("/api/ping", (req, res) => {
   res.json({ ok: true });
+});
+
+// Descarga una foto/audio/documento que envió el cliente (para verlo en el panel)
+app.get("/api/media/:id", async (req, res) => {
+  try {
+    const id = String(req.params.id).replace(/[^0-9]/g, "");
+    if (!id) return res.status(400).json({ ok: false, error: "id inválido" });
+    const auth = { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` };
+    const info = await fetch(`https://graph.facebook.com/v25.0/${id}`, { headers: auth });
+    const meta = await info.json();
+    if (!info.ok || !meta.url) {
+      return res.status(404).json({ ok: false, error: "El archivo ya no está disponible en WhatsApp" });
+    }
+    const archivo = await fetch(meta.url, { headers: auth });
+    if (!archivo.ok) return res.status(502).json({ ok: false, error: "No se pudo descargar el archivo" });
+    const buf = Buffer.from(await archivo.arrayBuffer());
+    res.set("Content-Type", meta.mime_type || archivo.headers.get("content-type") || "application/octet-stream");
+    res.set("Cache-Control", "private, max-age=86400");
+    res.send(buf);
+  } catch (error) {
+    console.error("Error descargando archivo:", error.message);
+    res.status(500).json({ ok: false, error: error.message });
+  }
 });
 
 // ── Rutas de Campañas Masivas ──────────────────────────────
@@ -250,8 +274,13 @@ app.post("/webhook", async (req, res) => {
       userText = `[${tipos[message.type] || message.type}]${caption ? " " + caption : ""}`;
     }
 
+    // Si es foto, audio, video o documento: guardamos el id del archivo
+    // para poder verlo desde el panel (Meta lo conserva unos 30 días)
+    const m = esArchivo ? message[message.type] : null;
+    const media = m && m.id ? { id: m.id, tipo: message.type, mime: m.mime_type, nombre: m.filename } : null;
+
     console.log("Mensaje recibido de", from, "tipo", message.type);
-    await guardarMensaje({ telefono: from, nombre: nombreCliente, texto: userText, direccion: "entrante" });
+    await guardarMensaje({ telefono: from, nombre: nombreCliente, texto: userText, direccion: "entrante", media });
 
     const ref = db.collection("conversaciones").doc(from);
     const conv = (await ref.get()).data() || {};
