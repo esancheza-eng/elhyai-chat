@@ -1,0 +1,31 @@
+{
+  "name": "ElhyAi Chat",
+  "short_name": "ElhyAi Chat",
+  "description": "Campañas, conversaciones e informe de cobranza por WhatsApp",
+  "start_url": "index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f5f2eb",
+  "theme_color": "#1f4e8c",
+  "lang": "es",
+  "icons": [
+    {
+      "src": "img/app-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "img/app-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "img/app-icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
