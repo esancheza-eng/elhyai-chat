@@ -11,6 +11,9 @@ router.post('/pause',   ctrl.pauseCampaign);
 router.post('/resume',  ctrl.resumeCampaign);
 router.post('/stop',    ctrl.stopCampaign);
 
+// Guardar cédulas de una base sin enviar mensajes
+router.post('/cedulas', ctrl.guardarCedulas);
+
 // Estado y log
 router.get('/status',  ctrl.getStatus);
 router.get('/log',     ctrl.getLog);

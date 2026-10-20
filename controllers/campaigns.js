@@ -78,6 +78,12 @@ exports.parseExcel = (req, res) => {
     const colTienda   = find('Tienda Factura','Tienda','tienda','TIENDA');
     const colCategoria= find('Categoría Cliente','Categoria','categoria','CATEGORIA');
     const colMes      = find('Mes','MES','Mes vencido','Mes Vencido','Mes de la cuota');
+    const colVendedor = find('Nombre Vendedor','Vendedor','VENDEDOR');
+    const colCalMes   = find('Calificación Cliente Mensual','Calificacion Mensual','Calificación Mensual');
+    const colCalRod   = find('Calificación Real Afectación','Calificacion Rodamiento','Calificación Rodamiento','Calificacion Real Afectacion');
+    const colRodam    = find('Categoría Cliente Rodamiento','Rodamiento','Categoria Rodamiento');
+    const colSaldoTot = find('Suma Saldo Crédito Final Total','Saldo Total','Saldo Credito Total','Saldo Total Credito');
+    const colCedula   = find('Cedula','Cédula','CEDULA','Número de Identificación','Numero de Identificacion','Identificación','Identificacion','CI','C.I.');
 
     if (!colNombre || !colNumero) {
       return res.status(400).json({
@@ -97,8 +103,15 @@ exports.parseExcel = (req, res) => {
       const tienda     = colTienda   ? String(row[colTienda]   || '').trim() : '';
       const categoria  = colCategoria? String(row[colCategoria]|| '').trim() : '';
       const mes        = colMes      ? String(row[colMes]      || '').trim().toLowerCase() : '';
+      const cedula     = colCedula   ? normalizarCedula(row[colCedula]) : '';
+      const txt = (col) => col ? String(row[col] == null ? '' : row[col]).trim() : '';
+      const vendedor   = txt(colVendedor);
+      const calMensual = txt(colCalMes).toUpperCase();
+      const calRodamiento = txt(colCalRod).toUpperCase();
+      const rodamiento = txt(colRodam);
+      const saldoTotal = colSaldoTot ? parseMonto(row[colSaldoTot]) : 0;
 
-      return { id: i + 1, nombre, numero, deuda, dias, mensajePre, cobrador, tienda, categoria, mes };
+      return { id: i + 1, nombre, numero, deuda, dias, mensajePre, cobrador, tienda, categoria, mes, cedula, vendedor, calMensual, calRodamiento, rodamiento, saldoTotal };
     }).filter(c => c.nombre && c.numero && c.numero.length >= 7);
 
     // Estadísticas
@@ -281,6 +294,7 @@ function ejecutarEnvio(cfg, clients, desde) {
             await db.collection('cobranza_clientes').doc(String(c.numero)).set(limpio({
               nombre: c.nombre, deuda: c.deuda, dias: c.dias,
               cobrador: c.cobrador || '', tienda: c.tienda || '',
+              ...datosFicha(c),
               mes: c.mes ? String(c.mes).toLowerCase().trim() : (mesVar ? mesVar.slice(1, -1).toLowerCase().trim() : null),
               campana: activeJob.campaignName, campanaId: activeJob.id,
               plantilla: useTemplate ? templateName : null,
@@ -409,6 +423,42 @@ exports.registrarEstado = (msgId, status, errorTexto) => {
 };
 
 // ── LOG EXPORT ────────────────────────────────────────────
+// Datos extra del cliente para la ficha en Conversaciones (solo los que vengan en el Excel)
+function datosFicha(c) {
+  const o = {};
+  ['cedula', 'vendedor', 'calMensual', 'calRodamiento', 'rodamiento'].forEach(k => { if (c[k]) o[k] = String(c[k]); });
+  if (c.tienda) o.tienda = String(c.tienda);
+  if (c.saldoTotal) o.saldoTotal = Number(c.saldoTotal);
+  if (c.nombre) o.nombreCompleto = String(c.nombre);
+  return o;
+}
+
+// ── GUARDAR CÉDULAS SIN ENVIAR ─────────────────────────────
+// Agrega la cédula a los clientes que ya recibieron mensajes
+// (no crea clientes nuevos ni cambia deuda, días ni mes).
+exports.guardarCedulas = async (req, res) => {
+  try {
+    const lista = (req.body && Array.isArray(req.body.clients) ? req.body.clients : [])
+      .map(c => ({ numero: String(c.numero || '').replace(/[^0-9]/g, ''), datos: datosFicha({ ...c, cedula: normalizarCedula(c.cedula) }) }))
+      .filter(c => c.numero && Object.keys(c.datos).some(k => k !== 'nombreCompleto'));
+    if (!lista.length) return res.status(400).json({ ok: false, error: 'La base no trae cédula ni datos del cliente.' });
+    let actualizados = 0;
+    for (let i = 0; i < lista.length; i += 300) {
+      const parte = lista.slice(i, i + 300);
+      const snaps = await db.getAll(...parte.map(c => db.collection('cobranza_clientes').doc(c.numero)));
+      const batch = db.batch();
+      snaps.forEach((snap, j) => {
+        if (snap.exists) { batch.set(snap.ref, parte[j].datos, { merge: true }); actualizados++; }
+      });
+      await batch.commit();
+    }
+    res.json({ ok: true, actualizados, total: lista.length });
+  } catch (err) {
+    console.error('Error guardando cédulas:', err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+};
+
 exports.getLog = (req, res) => {
   res.json({ ok: true, log: activeJob.log, stats: {
     total:  activeJob.total,
@@ -447,6 +497,13 @@ const MESES_TXT = ['enero','febrero','marzo','abril','mayo','junio','julio','ago
 
 // ── Teléfonos de Ecuador ──────────────────────────────────
 // 0989938910 → 593989938910 · 989938910 → 593989938910 · +593 98… → 593…
+// Cédula/RUC: solo dígitos; si Excel quitó el 0 inicial (9 dígitos) se repone
+function normalizarCedula(valor) {
+  let t = String(valor == null ? '' : valor).trim().replace(/\.0+$/, '').replace(/[^0-9]/g, '');
+  if (t.length === 9 || t.length === 12) t = '0' + t;
+  return t;
+}
+
 function normalizarTelefono(valor) {
   let t = String(valor == null ? '' : valor).replace(/[^0-9]/g, '');
   if (t.startsWith('00')) t = t.slice(2);                       // 00593… (formato internacional)

@@ -66,7 +66,22 @@ router.get("/:telefono", async (req, res) => {
         fecha: data.fecha && data.fecha.toDate ? data.fecha.toDate().toISOString() : null
       };
     });
-    res.json({ ok: true, mensajes });
+    // Datos del cliente de cobranza (cédula, deuda, cobrador) si existen
+    let cliente = null;
+    try {
+      const cd = await db.collection("cobranza_clientes").doc(telefono).get();
+      if (cd.exists) {
+        const c = cd.data();
+        cliente = {
+          nombre: c.nombreCompleto || c.nombre || "", cedula: c.cedula || "",
+          deuda: c.deuda || 0, dias: c.dias || 0, mes: c.mes || "", saldoTotal: c.saldoTotal || 0,
+          cobrador: c.cobrador || "", vendedor: c.vendedor || "", tienda: c.tienda || "",
+          calMensual: c.calMensual || "", calRodamiento: c.calRodamiento || "", rodamiento: c.rodamiento || ""
+        };
+      }
+    } catch (e) { /* sin datos extra */ }
+
+    res.json({ ok: true, mensajes, cliente });
   } catch (error) {
     console.error("Error obteniendo hilo:", error.message);
     res.status(500).json({ ok: false, error: error.message });

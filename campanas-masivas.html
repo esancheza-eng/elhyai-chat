@@ -179,6 +179,12 @@ table.preview tr:hover td { background:var(--surface); }
       <h3>Configurar mensaje</h3>
       <p class="sub">Elige cómo se enviará el mensaje a cada cliente.</p>
 
+      <div id="cedulaBox" class="hidden" style="margin:0 0 16px;padding:10px 14px;border:1px dashed var(--border);border-radius:10px;font-size:13px">
+        🪪 Esta base trae datos de <b id="cedulaCount">0</b> clientes (cédula, calificación, vendedor, saldo total).
+        <button type="button" class="btn btn-ghost" style="padding:4px 10px;font-size:12px;margin-left:8px" onclick="guardarCedulas()">💾 Solo guardar datos (sin enviar)</button>
+        <div class="hint" style="margin-top:4px">Úsalo para ver la ficha del cliente en Conversaciones de clientes a los que ya se les envió mensaje. No envía nada ni cambia saldos.</div>
+      </div>
+
       <div class="toggle-row">
         <div class="toggle-opt active" id="optTemplate" onclick="setMode(true)">Plantilla aprobada (Meta)</div>
         <div class="toggle-opt" id="optFree" onclick="setMode(false)">Texto libre</div>
@@ -470,6 +476,9 @@ function handleFile(file) {
       document.getElementById('sideTotal').textContent = clients.length;
       document.getElementById('sideDeuda').textContent = '$' + stats.deudaTotal.toLocaleString('es-EC', {minimumFractionDigits:2});
       renderPreview();
+      const conCed = clients.filter(c => c.cedula || c.vendedor || c.calMensual || c.saldoTotal).length;
+      document.getElementById('cedulaCount').textContent = conCed;
+      document.getElementById('cedulaBox').classList.toggle('hidden', !conCed);
       showToast(`${clients.length} clientes cargados`);
       setTimeout(() => goStep(2), 600);
     } catch(e) {
@@ -724,6 +733,21 @@ function nuevaCampana() {
   document.getElementById('startBlock').classList.remove('hidden');
   document.getElementById('p4sub').textContent = 'Todo listo. Presiona iniciar para comenzar el envío.';
   goStep(1);
+}
+
+// Guarda solo las cédulas de la base cargada (no envía mensajes)
+async function guardarCedulas() {
+  backendUrl = document.getElementById('backendUrl').value.replace(/\/$/, '');
+  try {
+    const lista = clients.filter(c => c.cedula || c.vendedor || c.calMensual || c.saldoTotal);
+    const res = await apiFetch(`${backendUrl}/api/campaigns/cedulas`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clients: lista })
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'No se pudo guardar');
+    showToast(`Datos guardados: ${data.actualizados} de ${data.total} (solo clientes que ya recibieron mensajes).`);
+  } catch (e) { showToast(e.message, true); }
 }
 
 async function pauseCampaign() {

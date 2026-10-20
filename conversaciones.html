@@ -82,6 +82,19 @@ body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text)
 .bot-toggle.off { border-color:var(--warn); }
 .bot-toggle:disabled { opacity:0.5; cursor:wait; }
 .thread-placeholder { flex:1; display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:13px; flex-direction:column; gap:8px; }
+/* Ficha del cliente (datos de la base de cobranza) */
+.ficha { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:8px 18px; padding:12px 24px; background:var(--surface2, #161a2e); border-bottom:1px solid var(--border); }
+.ficha:empty { display:none; }
+.ficha .f { min-width:0; }
+.ficha .l { font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin-bottom:2px; }
+.ficha .v { font-size:12.5px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.ficha .v.mono { font-family:'JetBrains Mono',monospace; }
+.cal { display:inline-block; padding:1px 7px; border-radius:6px; font-weight:700; font-size:11px; margin-right:6px; background:#2a2f45; color:#c9cde0; }
+.cal-AA { background:#0f3d2e; color:#3ee6a8; } .cal-A { background:#173a4a; color:#5cc8ff; }
+.cal-B { background:#4a3b12; color:#ffd166; } .cal-C { background:#4a2a12; color:#ff9f66; }
+.cal-D, .cal-E { background:#4a1220; color:#ff6b81; }
+.btn-copy { font-size:10px; padding:1px 6px; border-radius:4px; border:1px solid var(--border); background:transparent; color:var(--muted); cursor:pointer; margin-left:6px; }
+@media (max-width:900px) { .ficha { grid-template-columns:repeat(2, minmax(0,1fr)); } }
 </style>
 </head>
 <body>
@@ -99,6 +112,7 @@ body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text)
   <input type="password" id="apiKey" placeholder="API_KEY" autocomplete="off" style="width:160px" onchange="guardarApiKey()">
   <button onclick="verificarConexion()">Verificar</button>
   <span><span class="dot" id="statusDot"></span> <span id="statusText">sin verificar</span></span>
+  <button id="btnSonido" onclick="cambiarSonido()" title="Sonido al llegar mensajes nuevos" style="margin-left:auto">🔔 Sonido: sí</button>
 </div>
 
 <div class="inbox">
@@ -199,6 +213,7 @@ async function cargarConversaciones() {
       return;
     }
 
+    avisarMensajesNuevos(data.conversaciones);
     conversacionesPorTelefono = {};
     data.conversaciones.forEach(c => { conversacionesPorTelefono[c.telefono] = c; });
 
@@ -244,6 +259,7 @@ async function abrirConversacion(telefono, nombre) {
       </div>
       <button class="bot-toggle" id="botToggle" onclick="cambiarBot()">…</button>
     </div>
+    <div class="ficha" id="ficha"></div>
     <div class="thread-body" id="threadBody">Cargando mensajes…</div>
     <div class="composer">
       <div class="window-note" id="windowNote"></div>
@@ -401,6 +417,92 @@ async function abrirMedia(id) {
   catch (e) { alert('Este archivo ya no está disponible en WhatsApp.'); }
 }
 
+// ── Cédula y datos del cliente (de la base de la campaña) ──
+function mostrarDatosCliente(cl) {
+  const box = document.getElementById('ficha');
+  if (!box) return;
+  let html = '';
+  if (cl) {
+    const campo = (l, v, ancho) => `<div class="f"${ancho ? ` style="grid-column:span ${ancho}"` : ''}><div class="l">${l}</div><div class="v">${v || '<span style="color:var(--muted)">—</span>'}</div></div>`;
+    const cal = (c) => c ? `<span class="cal cal-${String(c).toUpperCase().startsWith('AA') ? 'AA' : esc(String(c).charAt(0).toUpperCase())}">${esc(c)}</span>` : ''; // E1, E2… usan el color de su letra
+    const r = String(cl.rodamiento || '').toLowerCase();
+    const rod = !cl.rodamiento ? '' : r.startsWith('deterior') ? `<span style="color:#ff9f66;font-weight:600;font-size:11.5px">▼ ${esc(cl.rodamiento)}</span>`
+      : r.startsWith('mejor') ? `<span style="color:#3ee6a8;font-weight:600;font-size:11.5px">▲ ${esc(cl.rodamiento)}</span>`
+      : `<span style="color:var(--muted);font-size:11.5px">${esc(cl.rodamiento)}</span>`;
+    const ced = cl.cedula ? `<span class="mono"><b>${esc(cl.cedula)}</b></span><button type="button" class="btn-copy" onclick="copiarCedula('${esc(cl.cedula)}', this)">Copiar</button>` : '';
+    const vencido = cl.deuda ? `<b>$${Number(cl.deuda).toFixed(2)}</b>${cl.mes ? ' · ' + esc(cl.mes) : ''}${cl.dias ? ' · ' + esc(cl.dias) + ' días' : ''}` : '';
+    const total = cl.saldoTotal ? `<b>$${Number(cl.saldoTotal).toLocaleString('es-EC', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b>` : '';
+    // 3 filas de 4 columnas: identificación · calificación y saldos · responsables
+    html = campo('Cliente', esc(cl.nombre), 2)
+      + campo('Cédula', ced)
+      + campo('Tienda factura', esc(cl.tienda))
+      + campo('Calificación mensual', cal(cl.calMensual))
+      + campo('Calificación rodamiento', cal(cl.calRodamiento) + rod)
+      + campo('Saldo vencido', vencido)
+      + campo('Saldo total del crédito', total)
+      + campo('Cobrador', esc(cl.cobrador), 2)
+      + campo('Vendedor', esc(cl.vendedor), 2);
+  }
+  if (box.dataset.html !== html) { box.dataset.html = html; box.innerHTML = html; }
+}
+function copiarCedula(ced, btn) {
+  const listo = () => { btn.textContent = '✓ Copiada'; setTimeout(() => btn.textContent = 'Copiar', 1500); };
+  if (navigator.clipboard) navigator.clipboard.writeText(ced).then(listo).catch(() => prompt('Cédula:', ced));
+  else prompt('Cédula:', ced);
+}
+
+// ── Sonido cuando llegan mensajes nuevos de clientes ──
+let sonidoActivo = true;
+try { sonidoActivo = localStorage.getItem('elhyai_sonido') !== 'no'; } catch (e) {}
+let audioCtx = null;
+let ultimoEntranteVisto = null; // null = primera carga (no suena)
+function pintarBotonSonido() {
+  const b = document.getElementById('btnSonido');
+  if (b) b.textContent = sonidoActivo ? '🔔 Sonido: sí' : '🔕 Sonido: no';
+}
+function cambiarSonido() {
+  sonidoActivo = !sonidoActivo;
+  try { localStorage.setItem('elhyai_sonido', sonidoActivo ? 'si' : 'no'); } catch (e) {}
+  pintarBotonSonido();
+  if (sonidoActivo) sonar();
+}
+// El navegador solo permite sonido después de un clic en la página
+document.addEventListener('click', () => {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  } catch (e) {}
+});
+function sonar() {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const t = audioCtx.currentTime;
+    [[880, 0], [1320, 0.15]].forEach(([f, d]) => {
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.type = 'sine'; o.frequency.value = f;
+      g.gain.setValueAtTime(0.0001, t + d);
+      g.gain.exponentialRampToValueAtTime(0.3, t + d + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + d + 0.25);
+      o.connect(g); g.connect(audioCtx.destination);
+      o.start(t + d); o.stop(t + d + 0.3);
+    });
+  } catch (e) {}
+}
+function avisarMensajesNuevos(lista) {
+  let max = 0, nuevos = 0;
+  lista.forEach(c => {
+    const t = c.ultimoEntrante ? Date.parse(c.ultimoEntrante) : 0;
+    if (t > max) max = t;
+    if (ultimoEntranteVisto !== null && t > ultimoEntranteVisto) nuevos++;
+  });
+  if (ultimoEntranteVisto !== null && nuevos && sonidoActivo) sonar();
+  if (max > (ultimoEntranteVisto || 0)) ultimoEntranteVisto = max;
+  // Cantidad de chats sin leer en el título de la pestaña
+  const sinLeer = lista.filter(c => c.noLeido && c.telefono !== conversacionActiva).length;
+  document.title = (sinLeer ? `(${sinLeer}) ` : '') + 'ElhyAi Chat — Conversaciones';
+}
+pintarBotonSonido();
+
 async function cargarHilo(telefono) {
   try {
     const res = await apiFetch(`${backendUrl}/api/conversations/${encodeURIComponent(telefono)}`);
@@ -414,6 +516,7 @@ async function cargarHilo(telefono) {
     }
 
     if (telefono !== conversacionActiva) return;
+    mostrarDatosCliente(data.cliente);
     const estabaAbajo = body.scrollHeight - body.scrollTop - body.clientHeight < 60;
     const html = data.mensajes.map(m => `
       <div class="msg ${m.direccion === 'saliente' ? 'saliente' : 'entrante'}">${htmlMedia(m)}${esc(m.texto)}<span class="msg-time">${m.origen === 'agente' ? 'Tú · ' : m.origen === 'bot' ? '🤖 Bot · ' : ''}${fmtFecha(m.fecha)}</span></div>
