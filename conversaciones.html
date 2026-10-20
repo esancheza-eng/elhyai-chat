@@ -216,6 +216,21 @@ function fmtFecha(fechaISO) {
   return d.toLocaleString('es-EC', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
 }
 
+// Estado de la conexión durante las revisiones automáticas (cada 5 s)
+let conexionCaida = false;
+function marcarConexion(ok) {
+  const dot = document.getElementById('statusDot');
+  const text = document.getElementById('statusText');
+  if (ok) {
+    if (conexionCaida) { dot.className = 'dot ok'; text.textContent = 'conectado'; }
+    conexionCaida = false;
+  } else if (!conexionCaida) {
+    conexionCaida = true;
+    dot.className = 'dot';
+    text.textContent = 'reconectando…';
+  }
+}
+
 async function verificarConexion() {
   backendUrl = document.getElementById('backendUrl').value.replace(/\/$/, '');
   const dot = document.getElementById('statusDot');
@@ -241,8 +256,16 @@ async function verificarConexion() {
 async function cargarConversaciones() {
   try {
     const res = await apiFetch(`${backendUrl}/api/conversations`);
+    if (res.status === 401) { // clave incorrecta: se avisa arriba y la lista no se borra
+      const l = document.getElementById('convList');
+      if (!l.querySelector('.conv-item')) l.innerHTML = '<div class="empty-state">Clave incorrecta o vacía.<br><br>Escríbela en el campo <b>Clave</b> de arriba y pulsa <b>Verificar</b>.</div>';
+      return;
+    }
+    if (!res.ok) throw new Error('HTTP ' + res.status); // error del servidor: no borrar la lista
     const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'respuesta inválida');
     const list = document.getElementById('convList');
+    marcarConexion(true);
 
     if (!data.ok || !data.conversaciones || data.conversaciones.length === 0) {
       list.innerHTML = '<div class="empty-state">Todavía no hay respuestas de clientes.<br><br>En cuanto un cliente conteste un mensaje, aparecerá aquí automáticamente.</div>';
@@ -270,7 +293,14 @@ async function cargarConversaciones() {
 
     if (conversacionActiva) { actualizarVentana(); actualizarBotonBot(); }
   } catch (e) {
-    document.getElementById('convList').innerHTML = '<div class="empty-state">No se pudo conectar al backend. Verifica la URL arriba.</div>';
+    // Si ya había conversaciones en pantalla, se quedan como estaban
+    // y solo se avisa "reconectando…" (internet débil o servidor despertando).
+    const list = document.getElementById('convList');
+    if (list.querySelector('.conv-item')) {
+      marcarConexion(false);
+    } else {
+      list.innerHTML = '<div class="empty-state">No se pudo conectar al backend. Verifica la URL y la clave arriba.<br><br>Si el servidor estaba dormido, espera un minuto: se reintenta solo.</div>';
+    }
   }
 }
 
