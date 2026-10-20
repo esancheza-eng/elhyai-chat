@@ -316,7 +316,8 @@ table.preview tr:hover td { background:var(--surface); }
         </div>
         <div class="btn-row">
           <button class="btn btn-warn" id="btnPause" onclick="pauseCampaign()">⏸ Pausar</button>
-          <button class="btn btn-danger" onclick="stopCampaign()">⏹ Detener</button>
+          <button class="btn btn-danger" id="btnStop" onclick="stopCampaign()">⏹ Detener</button>
+          <button class="btn btn-ghost hidden" id="btnNueva" onclick="nuevaCampana()">＋ Nueva campaña</button>
         </div>
         <div class="log-wrap" id="logWrap"></div>
       </div>
@@ -426,6 +427,7 @@ async function checkBackend() {
     }
     if (!res.ok) throw new Error();
     badge.innerHTML = '<span class="badge badge-live">conectado</span>';
+    reconectarCampana();
   } catch(e) {
     badge.innerHTML = '<span class="badge badge-off">sin conexión</span>';
     showToast('No se pudo conectar al backend. Revisa la URL.', true);
@@ -665,6 +667,10 @@ function renderProgress(job) {
   document.getElementById('progressPct').textContent = job.pct + '%';
   document.getElementById('currentClient').textContent = job.current ? `Enviando a ${job.current}...` : (job.running ? 'Procesando...' : 'Campaña detenida');
   document.getElementById('progressSub').textContent = `${job.sent + job.failed} / ${job.total} clientes`;
+  const terminada = !job.running;
+  document.getElementById('btnPause').classList.toggle('hidden', terminada);
+  document.getElementById('btnStop').classList.toggle('hidden', terminada);
+  document.getElementById('btnNueva').classList.toggle('hidden', !terminada);
   document.getElementById('miniSent').textContent = job.sent;
   document.getElementById('miniFailed').textContent = job.failed;
 
@@ -683,6 +689,41 @@ function renderProgress(job) {
       <span class="${e.cls}" style="text-align:right;margin-left:12px">${escHtml(e.txt)}</span>
     </div>`;
   }).join('');
+}
+
+// ── Al volver a esta página: mostrar la campaña que sigue en curso ──
+// El envío corre en el servidor; si sales a Conversaciones o Informe y
+// regresas, aquí se vuelve a mostrar el avance (o la última campaña de hoy).
+async function reconectarCampana() {
+  try {
+    if (pollInterval) return; // ya se está mostrando
+    const res = await apiFetch(`${backendUrl}/api/campaigns/status`);
+    const job = await res.json();
+    if (!job || !job.total) return;
+    const fin = job.finishedAt ? Date.parse(job.finishedAt) : 0;
+    const reciente = fin && (Date.now() - fin) < 12 * 60 * 60 * 1000;
+    if (!job.running && !reciente) return;
+
+    goStep(4);
+    document.getElementById('startBlock').classList.add('hidden');
+    document.getElementById('runningBlock').classList.remove('hidden');
+    document.getElementById('p4sub').textContent = job.running
+      ? `Campaña en curso: "${job.campaignName || ''}"`
+      : `Última campaña: "${job.campaignName || ''}"`;
+    isPaused = !!job.paused;
+    document.getElementById('btnPause').textContent = isPaused ? '▶ Reanudar' : '⏸ Pausar';
+    finEnvioVisto = null;
+    pollStatus();
+    pollInterval = setInterval(pollStatus, 2000);
+  } catch (e) { /* si falla, la página queda como siempre */ }
+}
+
+function nuevaCampana() {
+  if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+  document.getElementById('runningBlock').classList.add('hidden');
+  document.getElementById('startBlock').classList.remove('hidden');
+  document.getElementById('p4sub').textContent = 'Todo listo. Presiona iniciar para comenzar el envío.';
+  goStep(1);
 }
 
 async function pauseCampaign() {
