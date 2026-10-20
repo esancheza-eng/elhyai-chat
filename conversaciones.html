@@ -258,6 +258,10 @@ async function verificarConexion() {
 // (modo 'cambios'). Cada 10 minutos, y en cualquier acción tuya
 // (abrir chat, responder, bot), se carga la lista completa como siempre.
 let cursorConv = null;          // fecha del último cambio recibido
+// Si el servidor no responde en 20 s se cancela la petición (internet colgado)
+function limiteTiempo() {
+  try { return AbortSignal.timeout(20000); } catch (e) { return undefined; }
+}
 let ultimaCargaCompleta = 0;    // cuándo fue la última lista completa
 const COMPLETA_CADA_MS = 10 * 60 * 1000;
 
@@ -269,7 +273,7 @@ async function cargarConversaciones(modo) {
     const url = parcial
       ? `${backendUrl}/api/conversations?desde=${encodeURIComponent(cursorConv)}`
       : `${backendUrl}/api/conversations`;
-    const res = await apiFetch(url);
+    const res = await apiFetch(url, { signal: limiteTiempo() });
     if (res.status === 401) { // clave incorrecta: se avisa arriba y la lista no se borra
       const l = document.getElementById('convList');
       if (!l.querySelector('.conv-item')) l.innerHTML = '<div class="empty-state">Clave incorrecta o vacía.<br><br>Escríbela en el campo <b>Clave</b> de arriba y pulsa <b>Verificar</b>.</div>';
@@ -607,14 +611,15 @@ pintarBotonSonido();
 
 async function cargarHilo(telefono) {
   try {
-    const res = await apiFetch(`${backendUrl}/api/conversations/${encodeURIComponent(telefono)}`);
-    const data = await res.json();
+    const res = await apiFetch(`${backendUrl}/api/conversations/${encodeURIComponent(telefono)}`, { signal: limiteTiempo() });
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data || !data.ok) return false; // error: se deja lo que está en pantalla y se reintenta
     const body = document.getElementById('threadBody');
-    if (!body) return;
+    if (!body) return true;
 
-    if (!data.ok || !data.mensajes || data.mensajes.length === 0) {
+    if (!data.mensajes || data.mensajes.length === 0) {
       body.innerHTML = '<div class="thread-placeholder">Sin mensajes todavía</div>';
-      return;
+      return true;
     }
 
     if (telefono !== conversacionActiva) return;
@@ -624,7 +629,7 @@ async function cargarHilo(telefono) {
       <div class="msg ${m.direccion === 'saliente' ? 'saliente' : 'entrante'}">${htmlMedia(m)}${esc(m.texto)}<span class="msg-time">${m.origen === 'agente' ? 'Tú · ' : m.origen === 'bot' ? '🤖 Bot · ' : ''}${fmtFecha(m.fecha)}</span></div>
     `).join('');
     // Solo redibuja si hubo cambios (así no se corta un audio ni parpadean las fotos)
-    if (body.dataset.html === html && body.dataset.cargado === telefono) return;
+    if (body.dataset.html === html && body.dataset.cargado === telefono) return true;
     body.dataset.html = html;
     body.innerHTML = html;
     cargarMedias(body);
@@ -632,8 +637,10 @@ async function cargarHilo(telefono) {
       body.scrollTop = body.scrollHeight;
       body.dataset.cargado = telefono;
     }
+    return true;
   } catch (e) {
     console.error(e);
+    return false;
   }
 }
 
@@ -656,8 +663,8 @@ function iniciarPolling() {
       if (conversacionActiva) {
         const c = conversacionesPorTelefono[conversacionActiva] || {};
         if (hiloVersion[conversacionActiva] !== c.ultimaActualizacion) {
-          hiloVersion[conversacionActiva] = c.ultimaActualizacion;
-          await cargarHilo(conversacionActiva);
+          const tel = conversacionActiva, version = c.ultimaActualizacion;
+          if (await cargarHilo(tel)) hiloVersion[tel] = version; // si falló, se reintenta en 5 s
         }
       }
     } finally {
