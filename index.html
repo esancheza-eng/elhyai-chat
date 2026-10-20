@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ElhyAi Chat</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#0d0f1a;--panel:#13162a;--border:#252a45;--accent:#6c63ff;--accent2:#00d4aa;--text:#e8eaf6;--muted:#6b7299;}
@@ -21,6 +22,43 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 .desc{font-size:13px;color:var(--muted);line-height:1.6;}
 .go{margin-top:6px;font-size:12px;font-weight:500;color:var(--c);}
 .footer{margin-top:40px;font-size:12px;color:var(--muted);text-align:center;}
+
+/* ═════ Tema claro "hueso" (reemplaza al fondo oscuro) ═════ */
+:root {
+  --bg:#f5f2eb; --panel:#fffdf9; --surface:#ffffff; --surface2:#f1ece2; --border:#e2dbcd;
+  --accent:#1f4e8c; --accent2:#0f7a5c; --accent3:#c0392b; --bad:#c0392b; --warn:#b26b00;
+  --text:#1d2330; --text2:#475063; --muted:#707789;
+}
+body, body *:not(.logo) { font-family:'Inter', 'Segoe UI', Arial, sans-serif !important; }
+body { font-variant-numeric: tabular-nums; -webkit-font-smoothing:antialiased; }
+.logo { color:var(--accent) !important; }
+.logo span { color:var(--accent2) !important; }
+h1, h2, h3, h4, .title, .stat-val, .tile .val, .progress-pct { letter-spacing:-0.01em; font-weight:700 !important; }
+.topbar, .config-bar, .config { box-shadow:0 1px 0 var(--border); }
+.card, .side-card, .tile, .conv-list, .thread-header, .ficha { box-shadow:0 1px 2px rgba(30,35,48,.04); }
+input, select, textarea { color:var(--text) !important; }
+::placeholder { color:#a3a8b5 !important; }
+.unread-badge { color:#fff !important; }
+.unread-badge[style] { color:var(--text) !important; font-weight:600; }
+.attn-badge { background:#fdecc8 !important; color:#8a5300 !important; }
+.msg.entrante { background:#ffffff !important; border:1px solid var(--border) !important; color:var(--text) !important; }
+.msg.saliente { background:#1f4e8c !important; }
+.window-note.open { background:#e6f4ee !important; color:#0f6a50 !important; }
+.window-note.closed { background:#fdf3e1 !important; color:#8a5300 !important; }
+.cal { background:#eceae4 !important; color:#4a5060 !important; }
+.cal-AA { background:#dcf3e8 !important; color:#0b6b4c !important; }
+.cal-A { background:#dfeefb !important; color:#1c5a96 !important; }
+.cal-B { background:#fdf0cf !important; color:#8a5a00 !important; }
+.cal-C { background:#fde4d0 !important; color:#a8470f !important; }
+.cal-D, .cal-E { background:#fbdde0 !important; color:#a61b2b !important; }
+.rod-baja { color:#c2410c !important; } .rod-sube { color:#0f7a5c !important; }
+.toast { background:#1d2330 !important; color:#fff !important; }
+.badge-live { background:#dcf3e8 !important; color:#0b6b4c !important; }
+.badge-off { background:#fbdde0 !important; color:#a61b2b !important; }
+/* Colores de las tarjetas del menú, más oscuros para fondo claro */
+.card[style*="00d4aa"] { --c:#0f7a5c !important; }
+.card[style*="6c63ff"] { --c:#1f4e8c !important; }
+.card[style*="ffd166"] { --c:#b26b00 !important; }
 </style>
 </head>
 <body>
