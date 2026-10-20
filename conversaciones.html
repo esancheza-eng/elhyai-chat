@@ -253,9 +253,23 @@ async function verificarConexion() {
   }
 }
 
-async function cargarConversaciones() {
+// ── Ahorro de lecturas ──
+// La revisión automática pide solo las conversaciones que cambiaron
+// (modo 'cambios'). Cada 10 minutos, y en cualquier acción tuya
+// (abrir chat, responder, bot), se carga la lista completa como siempre.
+let cursorConv = null;          // fecha del último cambio recibido
+let ultimaCargaCompleta = 0;    // cuándo fue la última lista completa
+const COMPLETA_CADA_MS = 10 * 60 * 1000;
+
+async function cargarConversaciones(modo) {
   try {
-    const res = await apiFetch(`${backendUrl}/api/conversations`);
+    const parcial = modo === 'cambios' && cursorConv
+      && Object.keys(conversacionesPorTelefono).length > 0
+      && (Date.now() - ultimaCargaCompleta) < COMPLETA_CADA_MS;
+    const url = parcial
+      ? `${backendUrl}/api/conversations?desde=${encodeURIComponent(cursorConv)}`
+      : `${backendUrl}/api/conversations`;
+    const res = await apiFetch(url);
     if (res.status === 401) { // clave incorrecta: se avisa arriba y la lista no se borra
       const l = document.getElementById('convList');
       if (!l.querySelector('.conv-item')) l.innerHTML = '<div class="empty-state">Clave incorrecta o vacía.<br><br>Escríbela en el campo <b>Clave</b> de arriba y pulsa <b>Verificar</b>.</div>';
@@ -267,6 +281,23 @@ async function cargarConversaciones() {
     if (!res.ok || !data || !data.ok) throw new Error((data && data.error) || ('HTTP ' + res.status));
     const list = document.getElementById('convList');
     marcarConexion(true);
+    if (data.cursor) cursorConv = data.cursor;
+
+    if (parcial) {
+      // Juntar los cambios con la lista que ya está en pantalla
+      const cambios = (data.conversaciones || []).filter(c =>
+        JSON.stringify(c) !== JSON.stringify(conversacionesPorTelefono[c.telefono]));
+      if (!cambios.length) { // nada nuevo: no se redibuja
+        if (conversacionActiva) { actualizarVentana(); actualizarBotonBot(); }
+        return;
+      }
+      const mapa = Object.assign({}, conversacionesPorTelefono);
+      cambios.forEach(c => { mapa[c.telefono] = c; });
+      data.conversaciones = Object.values(mapa).sort((a, b) =>
+        (Date.parse(b.ultimaActualizacion) || 0) - (Date.parse(a.ultimaActualizacion) || 0));
+    } else {
+      ultimaCargaCompleta = Date.now();
+    }
 
     if (!data.ok || !data.conversaciones || data.conversaciones.length === 0) {
       list.innerHTML = '<div class="empty-state">Todavía no hay respuestas de clientes.<br><br>En cuanto un cliente conteste un mensaje, aparecerá aquí automáticamente.</div>';
@@ -608,11 +639,30 @@ async function cargarHilo(telefono) {
 
 // Refresca la lista y la conversación abierta cada 5 segundos,
 // para simular "tiempo real" sin necesidad de websockets.
+// Ahorro: solo cambios cada 5 s (cada 30 s si la pestaña está oculta),
+// y el chat abierto se relee solo cuando llegó o salió un mensaje.
+let revisando = false;
+let ultimaRevision = 0;
+let hiloVersion = {}; // teléfono → ultimaActualizacion con la que se cargó su chat
 function iniciarPolling() {
   if (pollInterval) clearInterval(pollInterval);
-  pollInterval = setInterval(() => {
-    cargarConversaciones();
-    if (conversacionActiva) cargarHilo(conversacionActiva);
+  pollInterval = setInterval(async () => {
+    if (revisando) return; // la revisión anterior aún no termina
+    if (document.hidden && Date.now() - ultimaRevision < 30000) return;
+    revisando = true;
+    ultimaRevision = Date.now();
+    try {
+      await cargarConversaciones('cambios');
+      if (conversacionActiva) {
+        const c = conversacionesPorTelefono[conversacionActiva] || {};
+        if (hiloVersion[conversacionActiva] !== c.ultimaActualizacion) {
+          hiloVersion[conversacionActiva] = c.ultimaActualizacion;
+          await cargarHilo(conversacionActiva);
+        }
+      }
+    } finally {
+      revisando = false;
+    }
   }, 5000);
 }
 

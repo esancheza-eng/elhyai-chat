@@ -20,9 +20,19 @@ function telefonoValido(t) {
 // Devuelve la lista de clientes con su último mensaje,
 // ordenados del más reciente al más antiguo.
 // ======================================================
+// Opcional: ?desde=<fecha ISO> devuelve SOLO las conversaciones que
+// cambiaron después de esa fecha (ahorra lecturas de Firestore).
+// Sin ?desde funciona igual que siempre (lista completa).
 router.get("/", async (req, res) => {
   try {
-    const snapshot = await db.collection("conversaciones")
+    let consulta = db.collection("conversaciones");
+    const desde = req.query.desde ? new Date(String(req.query.desde)) : null;
+    const parcial = !!(desde && !isNaN(desde.getTime()));
+    if (parcial) {
+      // 2 s de margen para no perder cambios que llegan casi al mismo tiempo
+      consulta = consulta.where("ultimaActualizacion", ">", admin.firestore.Timestamp.fromMillis(desde.getTime() - 2000));
+    }
+    const snapshot = await consulta
       .orderBy("ultimaActualizacion", "desc")
       .get();
 
@@ -38,7 +48,13 @@ router.get("/", async (req, res) => {
       };
     });
 
-    res.json({ ok: true, conversaciones });
+    // Marca de tiempo del cambio más reciente: el panel la envía en la próxima consulta
+    let cursor = parcial ? desde.toISOString() : null;
+    conversaciones.forEach((c) => {
+      if (c.ultimaActualizacion && (!cursor || c.ultimaActualizacion > cursor)) cursor = c.ultimaActualizacion;
+    });
+
+    res.json({ ok: true, conversaciones, cursor, parcial });
   } catch (error) {
     console.error("Error listando conversaciones:", error.message);
     res.status(500).json({ ok: false, error: error.message });
