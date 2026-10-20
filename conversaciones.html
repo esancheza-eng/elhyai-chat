@@ -261,9 +261,10 @@ async function cargarConversaciones() {
       if (!l.querySelector('.conv-item')) l.innerHTML = '<div class="empty-state">Clave incorrecta o vacía.<br><br>Escríbela en el campo <b>Clave</b> de arriba y pulsa <b>Verificar</b>.</div>';
       return;
     }
-    if (!res.ok) throw new Error('HTTP ' + res.status); // error del servidor: no borrar la lista
-    const data = await res.json();
-    if (!data.ok) throw new Error(data.error || 'respuesta inválida');
+    let data = null;
+    try { data = await res.json(); } catch (_) {}
+    // Error del servidor: no borrar la lista; se guarda el detalle para mostrarlo
+    if (!res.ok || !data || !data.ok) throw new Error((data && data.error) || ('HTTP ' + res.status));
     const list = document.getElementById('convList');
     marcarConexion(true);
 
@@ -299,7 +300,11 @@ async function cargarConversaciones() {
     if (list.querySelector('.conv-item')) {
       marcarConexion(false);
     } else {
-      list.innerHTML = '<div class="empty-state">No se pudo conectar al backend. Verifica la URL y la clave arriba.<br><br>Si el servidor estaba dormido, espera un minuto: se reintenta solo.</div>';
+      const detalle = String((e && e.message) || '');
+      const esRed = /Failed to fetch|NetworkError|Load failed/i.test(detalle);
+      list.innerHTML = esRed
+        ? '<div class="empty-state">No se pudo conectar al backend. Verifica la URL y la clave arriba.<br><br>Si el servidor estaba dormido, espera un minuto: se reintenta solo.</div>'
+        : '<div class="empty-state">El servidor respondió con un error al leer las conversaciones.<br><br><span style="font-size:11px;word-break:break-word">Detalle: ' + esc(detalle) + '</span></div>';
     }
   }
 }
