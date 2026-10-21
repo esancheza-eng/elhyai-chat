@@ -236,6 +236,23 @@ function responder({ texto, esArchivo, tipoMensaje, cliente, conv }) {
     };
   }
 
+  // ── Aviso de cobro: facilidades de pago / condonación ──
+  // Solo para clientes cuya última campaña fue una plantilla "aviso_cobro…"
+  // (ej. aviso_cobro_marcimex_e_e1). Al resto el bot les responde como siempre.
+  const recibioAvisoCobro = !!(cliente && /aviso_cobro/i.test(String(cliente.plantilla || "")));
+  if (recibioAvisoCobro && tiene(t, ["facilidad", "facilidades"])) {
+    return {
+      texto: `Recibimos su solicitud de facilidades de pago ✅ ${gestor} se comunicará con usted para revisar las alternativas disponibles (horario: ${CFG.horario}).`,
+      atender: true, pausar: true, paso: null, etiqueta: "facilidades de pago"
+    };
+  }
+  if (recibioAvisoCobro && tiene(t, ["condon"])) {
+    return {
+      texto: `Recibimos su solicitud de revisión de condonación ✅ ${gestor} se comunicará con usted (horario: ${CFG.horario}).\nCualquier condonación está sujeta a evaluación y aprobación de ${CFG.empresa}.`,
+      atender: true, pausar: true, paso: null, etiqueta: "condonación"
+    };
+  }
+
   // ── Esperando la fecha de la promesa de pago ──
   if (paso === "fecha" && !/^[1-6]$/.test(t)) {
     const f = interpretarFecha(texto);
