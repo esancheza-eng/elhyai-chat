@@ -224,6 +224,18 @@ function responder({ texto, esArchivo, tipoMensaje, cliente, conv }) {
     return { texto: CFG.despedidaEquivocado, excluir: "equivocado", etiqueta: "equivocado", paso: null };
   }
 
+  // ── Solicitud de refinanciación ──
+  // Solo para clientes cuya última campaña fue una plantilla de refinanciación
+  // (nombre con "refinanc", ej. refinanciamiento_marcimex). Al resto el bot
+  // les responde como siempre (menú normal).
+  const recibioRefinanciacion = !!(cliente && /refinanc/i.test(String(cliente.plantilla || "")));
+  if (recibioRefinanciacion && tiene(t, ["refinanc", "quiero refinanc"])) {
+    return {
+      texto: `Recibimos su solicitud de revisión para refinanciación ✅ ${gestor} se comunicará con usted (horario: ${CFG.horario}).\nLa refinanciación está sujeta a evaluación y aprobación de ${CFG.empresa}.`,
+      atender: true, pausar: true, paso: null, etiqueta: "refinanciar"
+    };
+  }
+
   // ── Esperando la fecha de la promesa de pago ──
   if (paso === "fecha" && !/^[1-6]$/.test(t)) {
     const f = interpretarFecha(texto);
