@@ -14,6 +14,9 @@ router.post('/stop',    ctrl.stopCampaign);
 // Guardar cédulas de una base sin enviar mensajes
 router.post('/cedulas', ctrl.guardarCedulas);
 
+// Preparar base: limpia el Excel original (no envía nada)
+router.post('/preparar', require('../controllers/preparar').prepararBase);
+
 // Estado y log
 router.get('/status',  ctrl.getStatus);
 router.get('/log',     ctrl.getLog);

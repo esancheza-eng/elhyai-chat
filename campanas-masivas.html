@@ -176,6 +176,21 @@ input, select, textarea { color:var(--text) !important; }
 .toast { background:#1d2330 !important; color:#fff !important; }
 .badge-live { background:#dcf3e8 !important; color:#0b6b4c !important; }
 .badge-off { background:#fbdde0 !important; color:#a61b2b !important; }
+/* Preparar base */
+.prep-box { margin-top:14px; padding:12px 14px; border:1px dashed var(--border); border-radius:10px; background:var(--surface); }
+.prep-check { font-size:13px; cursor:pointer; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.prep-grid { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:10px; margin-top:10px; }
+.prep-grid label { display:block; font-size:10.5px; color:var(--muted); margin-bottom:3px; }
+.prep-grid input { width:100%; background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:7px 9px; font-size:12.5px; color:var(--text); }
+.prep-result { margin-top:14px; padding:14px 16px; border:1px solid var(--border); border-radius:12px; background:var(--panel); }
+.prep-result h4 { font-size:14px; margin-bottom:10px; }
+.prep-nums { display:grid; grid-template-columns:repeat(5, minmax(0,1fr)); gap:8px; margin-bottom:8px; }
+.prep-nums div { background:var(--surface2); border-radius:8px; padding:8px 10px; }
+.prep-nums span { display:block; font-size:10.5px; color:var(--muted); }
+.prep-nums b { font-size:16px; }
+.prep-motivos { font-size:12.5px; margin:8px 0 10px; }
+.prep-motivos ul { margin:4px 0 0 18px; }
+@media (max-width:800px) { .prep-grid { grid-template-columns:repeat(2, minmax(0,1fr)); } .prep-nums { grid-template-columns:repeat(2, minmax(0,1fr)); } }
 </style>
 </head>
 <body>
@@ -212,7 +227,21 @@ input, select, textarea { color:var(--text) !important; }
       <div class="cols-note">
         <b>Columnas reconocidas:</b> nombre, teléfono/número, deuda/saldo, días vencidos, cobrador, tienda, categoría — el sistema busca variantes automáticamente (mayúsculas, tildes, espacios no importan).
       </div>
+      <!-- PREPARAR BASE: limpia el Excel original antes de enviar (opcional) -->
+      <div class="prep-box">
+        <label class="prep-check"><input type="checkbox" id="prepActivo" onchange="guardarOpcionesPrep()"> 🧹 <b>Preparar base automáticamente</b> <span style="color:var(--muted)">(sube el Excel tal como sale del sistema)</span></label>
+        <div class="prep-grid" id="prepOpciones">
+          <div><label>Saldo mínimo ($)</label><input type="number" id="prepSaldoMin" value="1" min="0" step="0.5" onchange="guardarOpcionesPrep()"></div>
+          <div><label>No repetir si recibió mensaje en los últimos (días)</label><input type="number" id="prepDias" value="3" min="0" step="1" onchange="guardarOpcionesPrep()"></div>
+          <div><label>Celular de control (va al final)</label><input type="text" id="prepCtlTel" placeholder="0989938910" onchange="guardarOpcionesPrep()"></div>
+          <div><label>Nombre del control</label><input type="text" id="prepCtlNombre" placeholder="Tu nombre" onchange="guardarOpcionesPrep()"></div>
+        </div>
+        <p class="hint" style="margin-top:6px;font-size:11.5px;color:var(--muted);line-height:1.45">Quita celulares inválidos o repetidos, saldos menores al mínimo, números que pidieron no recibir mensajes y a quienes ya les escribiste hace poco. Pon 0 días para no aplicar esa regla. Desmárcalo para subir un Excel ya preparado o para "Solo guardar datos".</p>
+      </div>
+
       <div id="uploadStatus" style="margin-top:14px;font-size:12px;color:var(--muted)"></div>
+
+      <div id="prepResultado" class="prep-result hidden"></div>
     </div>
 
     <!-- STEP 2: PLANTILLA -->
@@ -494,6 +523,72 @@ dropzone.addEventListener('drop', e => {
 });
 fileInput.addEventListener('change', e => { if (e.target.files.length) handleFile(e.target.files[0]); });
 
+// ── PREPARAR BASE ───────────────────────────────────────
+const PREP_KEY = 'elhyai_preparar_base';
+function guardarOpcionesPrep() {
+  try {
+    localStorage.setItem(PREP_KEY, JSON.stringify({
+      activo: document.getElementById('prepActivo').checked,
+      saldoMinimo: document.getElementById('prepSaldoMin').value,
+      diasSinRepetir: document.getElementById('prepDias').value,
+      controlTelefono: document.getElementById('prepCtlTel').value,
+      controlNombre: document.getElementById('prepCtlNombre').value
+    }));
+  } catch (e) {}
+  document.getElementById('prepOpciones').style.opacity = document.getElementById('prepActivo').checked ? '1' : '.45';
+}
+(function cargarOpcionesPrep() {
+  try {
+    const o = JSON.parse(localStorage.getItem(PREP_KEY) || 'null');
+    if (o) {
+      document.getElementById('prepActivo').checked = !!o.activo;
+      if (o.saldoMinimo !== undefined) document.getElementById('prepSaldoMin').value = o.saldoMinimo;
+      if (o.diasSinRepetir !== undefined) document.getElementById('prepDias').value = o.diasSinRepetir;
+      document.getElementById('prepCtlTel').value = o.controlTelefono || '';
+      document.getElementById('prepCtlNombre').value = o.controlNombre || '';
+    }
+  } catch (e) {}
+  document.getElementById('prepOpciones').style.opacity = document.getElementById('prepActivo').checked ? '1' : '.45';
+})();
+
+function descargarB64(b64, nombre) {
+  const bin = atob(b64), bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const url = URL.createObjectURL(new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+  const a = document.createElement('a'); a.href = url; a.download = nombre; document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
+}
+
+let prepArchivos = null;
+function mostrarResultadoPrep(data, nombreArchivo) {
+  const r = data.resumen;
+  prepArchivos = data.archivos;
+  const base = String(nombreArchivo || 'base').replace(/\.[^.]+$/, '');
+  prepArchivos.nombreBase = `BASE_LISTA_${base}_${r.listos}clientes.xlsx`;
+  prepArchivos.nombreExc = `EXCLUIDOS_${base}_${r.excluidos}.xlsx`;
+  const fmt = n => '$' + Number(n).toLocaleString('es-EC', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const motivos = Object.entries(r.motivos).map(([m, n]) => `<li>${escHtml(m)}: <b>${n}</b></li>`).join('') || '<li>Ninguno</li>';
+  const meses = Object.entries(r.porMes).map(([m, n]) => `${escHtml(m)}: <b>${n}</b>`).join(' · ');
+  const box = document.getElementById('prepResultado');
+  box.innerHTML = `
+    <h4>🧹 Base preparada</h4>
+    <div class="prep-nums">
+      <div><span>${r.formato === 'creditos' ? 'Clientes (de ' + r.creditos + ' créditos)' : 'Filas en el archivo'}</span><b>${r.filasArchivo}</b></div>
+      <div><span>Listos para enviar</span><b style="color:var(--accent2)">${r.listos}</b></div>
+      <div><span>Excluidos</span><b style="color:var(--accent3)">${r.excluidos}</b></div>
+      <div><span>Deuda total</span><b>${fmt(data.stats.deudaTotal)}</b></div>
+      <div><span>Costo aprox. en Meta</span><b>${fmt(r.costoAprox)}</b></div>
+    </div>
+    <p class="hint" style="font-size:12px;color:var(--muted);line-height:1.5">${r.formato === 'creditos' ? 'Rodamiento calculado con la fórmula del Listado de Ventas · ' : ''}Por mes: ${meses || '—'}${r.control ? ' · + control al final' : ''} · Saldo tomado de <b>${escHtml(r.columnaSaldo)}</b> · Días de <b>${escHtml(r.columnaDias)}</b></p>
+    <div class="prep-motivos"><b>Motivos de exclusión:</b><ul>${motivos}</ul></div>
+    <div class="btn-row" style="flex-wrap:wrap">
+      <button class="btn btn-ghost" type="button" onclick="descargarB64(prepArchivos.base, prepArchivos.nombreBase)">⬇ Base para enviar (Excel)</button>
+      <button class="btn btn-ghost" type="button" onclick="descargarB64(prepArchivos.excluidos, prepArchivos.nombreExc)">⬇ Excluidos (Excel)</button>
+      <button class="btn btn-primary" type="button" onclick="goStep(2)" ${r.listos ? '' : 'disabled'}>Continuar con ${r.listos} clientes →</button>
+    </div>`;
+  box.classList.remove('hidden');
+}
+
 function handleFile(file) {
   const status = document.getElementById('uploadStatus');
   status.textContent = `Leyendo ${file.name}...`;
@@ -502,6 +597,40 @@ function handleFile(file) {
   reader.onload = async () => {
     const base64 = reader.result.split(',')[1];
     backendUrl = document.getElementById('backendUrl').value.replace(/\/$/, '');
+    const preparar = document.getElementById('prepActivo').checked;
+    document.getElementById('prepResultado').classList.add('hidden');
+    if (preparar) {
+      try {
+        status.textContent = `Preparando ${file.name}… (revisando celulares, saldos y envíos recientes)`;
+        const res = await apiFetch(`${backendUrl}/api/campaigns/preparar`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ data: base64, opciones: {
+            saldoMinimo: document.getElementById('prepSaldoMin').value,
+            diasSinRepetir: document.getElementById('prepDias').value,
+            controlTelefono: document.getElementById('prepCtlTel').value,
+            controlNombre: document.getElementById('prepCtlNombre').value
+          } })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) throw new Error(data.error || ('Error ' + res.status + ' al preparar la base'));
+        clients = data.clients;
+        stats = data.stats;
+        status.innerHTML = `<span style="color:var(--accent2)">✓ Base preparada: ${clients.length} clientes listos.</span>`;
+        document.getElementById('sideTotal').textContent = clients.length;
+        document.getElementById('sideDeuda').textContent = '$' + stats.deudaTotal.toLocaleString('es-EC', {minimumFractionDigits:2});
+        renderPreview();
+        const conCed = clients.filter(c => c.cedula || c.vendedor || c.calMensual || c.saldoTotal).length;
+        document.getElementById('cedulaCount').textContent = conCed;
+        document.getElementById('cedulaBox').classList.toggle('hidden', !conCed);
+        mostrarResultadoPrep(data, file.name);
+        showToast(`Base preparada: ${clients.length} listos, ${data.resumen.excluidos} excluidos`);
+      } catch (e) {
+        status.innerHTML = `<span style="color:var(--accent3)">✗ ${escHtml(e.message)}</span>`;
+        showToast(e.message, true);
+      }
+      return;
+    }
     try {
       const res = await apiFetch(`${backendUrl}/api/campaigns/parse`, {
         method: 'POST',
