@@ -129,6 +129,109 @@ router.post("/:telefono/leido", async (req, res) => {
 // Ojo: WhatsApp solo permite texto libre si el cliente escribió
 // en las últimas 24 horas; si no, Meta devuelve un error.
 // ======================================================
+// ======================================================
+// POST /api/conversations/:telefono/archivo
+// Body: { data (base64), mime, nombre, caption }
+// Envía una FOTO (jpg/png) o un PDF al cliente desde el panel.
+// Igual que el texto: solo dentro de las 24 h desde el último
+// mensaje del cliente (si no, Meta exige plantilla).
+// ======================================================
+const TIPOS_ARCHIVO = {
+  "image/jpeg": { tipo: "image", maxMB: 5, etiqueta: "📷 Imagen" },
+  "image/png": { tipo: "image", maxMB: 5, etiqueta: "📷 Imagen" },
+  "application/pdf": { tipo: "document", maxMB: 15, etiqueta: "📄 Documento" }
+};
+
+router.post("/:telefono/archivo", async (req, res) => {
+  const { telefono } = req.params;
+  const body = req.body || {};
+  const mime = String(body.mime || "").toLowerCase();
+  const info = TIPOS_ARCHIVO[mime];
+  const nombre = String(body.nombre || "archivo").slice(0, 120);
+  const caption = String(body.caption || "").trim().slice(0, 1024);
+
+  if (!telefonoValido(telefono)) return res.status(400).json({ ok: false, error: "Teléfono inválido" });
+  if (!info) return res.status(400).json({ ok: false, error: "Solo se pueden enviar fotos JPG/PNG o documentos PDF." });
+  if (!body.data) return res.status(400).json({ ok: false, error: "No se recibió el archivo." });
+
+  const buf = Buffer.from(String(body.data), "base64");
+  if (!buf.length) return res.status(400).json({ ok: false, error: "El archivo está vacío." });
+  if (buf.length > info.maxMB * 1024 * 1024) {
+    return res.status(400).json({ ok: false, error: `El archivo supera ${info.maxMB} MB (límite de WhatsApp para este tipo).` });
+  }
+
+  try {
+    wa.checkCredentials();
+    const token = process.env.WHATSAPP_TOKEN;
+    const phoneId = process.env.PHONE_NUMBER_ID;
+
+    // 1) Subir el archivo a WhatsApp → devuelve un id
+    const form = new FormData();
+    form.append("messaging_product", "whatsapp");
+    form.append("type", mime);
+    form.append("file", new Blob([buf], { type: mime }), nombre);
+    const up = await fetch(`https://graph.facebook.com/v25.0/${phoneId}/media`, {
+      method: "POST", headers: { Authorization: `Bearer ${token}` }, body: form
+    });
+    const upData = await up.json().catch(() => ({}));
+    if (!up.ok || !upData.id) {
+      const err = new Error((upData.error && upData.error.message) || "WhatsApp no aceptó el archivo");
+      err.response = { data: upData };
+      throw err;
+    }
+
+    // 2) Enviar el mensaje con ese archivo
+    const contenido = info.tipo === "image"
+      ? { id: upData.id, ...(caption ? { caption } : {}) }
+      : { id: upData.id, filename: nombre, ...(caption ? { caption } : {}) };
+    const env = await fetch(`https://graph.facebook.com/v25.0/${phoneId}/messages`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ messaging_product: "whatsapp", to: telefono, type: info.tipo, [info.tipo]: contenido })
+    });
+    const envData = await env.json().catch(() => ({}));
+    if (!env.ok) {
+      const err = new Error((envData.error && envData.error.message) || "WhatsApp no aceptó el mensaje");
+      err.response = { data: envData };
+      throw err;
+    }
+
+    // 3) Guardar en el chat (se ve en el panel igual que las fotos que envía el cliente)
+    const texto = `[${info.etiqueta}]${caption ? " " + caption : ""}`;
+    const ref = db.collection("conversaciones").doc(telefono);
+    await ref.set(
+      {
+        telefono,
+        ultimoMensaje: texto,
+        ultimaActualizacion: admin.firestore.FieldValue.serverTimestamp(),
+        noLeido: false,
+        requiereAtencion: false,
+        botPausadoHasta: admin.firestore.Timestamp.fromMillis(Date.now() + PAUSA_BOT_MS)
+      },
+      { merge: true }
+    );
+    await ref.collection("mensajes").add({
+      texto,
+      direccion: "saliente",
+      origen: "agente",
+      mediaId: upData.id, mediaTipo: info.tipo, mediaMime: mime, mediaNombre: nombre,
+      waMessageId: envData.messages && envData.messages[0] ? envData.messages[0].id : null,
+      fecha: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    res.json({ ok: true });
+  } catch (error) {
+    const metaError = error.response && error.response.data && error.response.data.error;
+    const code = metaError && metaError.code;
+    let mensaje = error.message;
+    if (code === 131047) {
+      mensaje = "Pasaron más de 24 horas desde el último mensaje del cliente. WhatsApp solo permite escribirle con una plantilla aprobada.";
+    }
+    console.error("Error enviando archivo del agente:", error.message);
+    res.status(502).json({ ok: false, error: mensaje, codigoMeta: code || null });
+  }
+});
+
 router.post("/:telefono/responder", async (req, res) => {
   const { telefono } = req.params;
   const texto = String((req.body && req.body.texto) || "").trim();

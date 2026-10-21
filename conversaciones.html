@@ -375,6 +375,8 @@ async function abrirConversacion(telefono, nombre) {
     <div class="composer">
       <div class="window-note" id="windowNote"></div>
       <div class="composer-row">
+        <button type="button" id="btnAdjuntar" title="Enviar foto (JPG/PNG) o PDF. El texto escrito se envía como descripción." onclick="document.getElementById('fileAdjunto').click()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border);padding:12px 14px">📎</button>
+        <input type="file" id="fileAdjunto" accept="image/jpeg,image/png,application/pdf" style="display:none" onchange="enviarArchivo(this)">
         <textarea id="replyText" rows="1" placeholder="Escribe tu respuesta… (Enter envía, Shift+Enter salto de línea)"></textarea>
         <button id="btnSend" onclick="enviarRespuesta()">Enviar</button>
       </div>
@@ -461,6 +463,48 @@ async function cambiarBot() {
   } finally {
     btn.disabled = false;
     actualizarBotonBot();
+  }
+}
+
+// ── Enviar foto o PDF al cliente (📎) ──
+// El texto que esté escrito en la caja se envía como descripción del archivo.
+async function enviarArchivo(input) {
+  const file = input.files && input.files[0];
+  input.value = '';
+  if (!file || !conversacionActiva) return;
+  const errBox = document.getElementById('sendError');
+  const btn = document.getElementById('btnAdjuntar');
+  const ta = document.getElementById('replyText');
+  errBox.style.display = 'none';
+  const tipos = { 'image/jpeg': 5, 'image/png': 5, 'application/pdf': 15 };
+  const maxMB = tipos[file.type];
+  if (!maxMB) { errBox.textContent = 'Solo se pueden enviar fotos JPG/PNG o documentos PDF.'; errBox.style.display = 'block'; return; }
+  if (file.size > maxMB * 1024 * 1024) { errBox.textContent = `El archivo supera ${maxMB} MB.`; errBox.style.display = 'block'; return; }
+  const caption = ta ? ta.value.trim() : '';
+  if (!confirm(`¿Enviar "${file.name}" a este cliente${caption ? ' con la descripción escrita' : ''}?`)) return;
+  btn.disabled = true; btn.textContent = '⏳';
+  try {
+    const base64 = await new Promise((ok, mal) => {
+      const r = new FileReader();
+      r.onload = () => ok(String(r.result).split(',')[1]);
+      r.onerror = () => mal(new Error('No se pudo leer el archivo'));
+      r.readAsDataURL(file);
+    });
+    const res = await apiFetch(`${backendUrl}/api/conversations/${encodeURIComponent(conversacionActiva)}/archivo`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data: base64, mime: file.type, nombre: file.name, caption })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) throw new Error(data.error || `Error ${res.status}`);
+    if (ta) { ta.value = ''; ta.style.height = 'auto'; }
+    await cargarHilo(conversacionActiva);
+    cargarConversaciones();
+  } catch (e) {
+    errBox.textContent = 'No se envió: ' + e.message;
+    errBox.style.display = 'block';
+  } finally {
+    btn.disabled = false; btn.textContent = '📎';
   }
 }
 
