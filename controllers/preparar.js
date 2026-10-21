@@ -128,6 +128,12 @@ function parseFecha(v) {
   if (m) return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
   return null;
 }
+// Hoy en Ecuador (UTC-5), a medianoche, para contar los días REALES de atraso
+function hoyEcuadorUTC() {
+  const ec = new Date(Date.now() - 5 * 60 * 60 * 1000);
+  return Date.UTC(ec.getUTCFullYear(), ec.getUTCMonth(), ec.getUTCDate());
+}
+
 function diasHoy(d, corte) {
   if (!d) return '';
   return Math.floor((corte - Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())) / 86400000);
@@ -282,6 +288,8 @@ exports.prepararBase = async (req, res) => {
       dias:     find('HOY', 'Dias', 'Días', 'Dias vencidos', 'Días vencidos', 'DIAS VENCIDOS', 'Dias Mora', 'Días Mora'),
       mesNum:   find('Mes Venc. Final', 'Mes Venc Final', 'Mes'),
       fechaVen: find('Fecha de Vencimiento Final Más Antigua', 'Fecha de Vencimiento Final Mas Antigua', 'Fecha de Vencimiento Inicial'),
+      // Solo la fecha de la cuota MÁS VENCIDA sirve para contar los días reales de atraso
+      fechaFin: find('Fecha de Vencimiento Final Más Antigua', 'Fecha de Vencimiento Final Mas Antigua'),
       cedula:   find('Número de Identificación', 'Numero de Identificacion', 'Cedula', 'Cédula', 'Identificación', 'Identificacion'),
       cobrador: find('Nombre del Cobrador Actual', 'Cobrador'),
       tienda:   find('Tienda Factura', 'Tienda'),
@@ -299,15 +307,24 @@ exports.prepararBase = async (req, res) => {
     }
 
     // 1) Leer y normalizar cada fila
+    // Días del MENSAJE = días reales desde la cuota más vencida hasta HOY.
+    // (La columna HOY de Marcimex cuenta hasta fin de mes; se usa solo si
+    //  el archivo no trae la fecha de vencimiento.) La calificación y la
+    //  categoría rodamiento NO cambian: siguen calculándose a fin de mes.
+    const hoyUTC = hoyEcuadorUTC();
     const filas = raw.map(r => {
       const tel = normalizarTelefono(r[col.tel]);
+      const diasFinMes = col.dias ? (parseInt(String(r[col.dias]).replace(/[^0-9-]/g, ''), 10) || 0) : null;
+      const fFin = col.fechaFin ? parseFecha(r[col.fechaFin]) : null;
+      const diasReales = fFin ? Math.floor((hoyUTC - fFin.getTime()) / 86400000) : (diasFinMes ?? 0);
       const mes = mesDe(col.mesNum ? r[col.mesNum] : '') || mesDe(col.fechaVen ? r[col.fechaVen] : '');
       return {
         nombre: limpiarTexto(r[col.nombre]),
         numero: tel,
         telOriginal: limpiarTexto(r[col.tel]),
         deuda: Math.round(parseMonto(r[col.deuda]) * 100) / 100,
-        dias: col.dias ? (parseInt(String(r[col.dias]).replace(/[^0-9-]/g, ''), 10) || 0) : 0,
+        dias: diasReales,
+        diasFinMes,
         mes,
         cedula: col.cedula ? normalizarCedula(r[col.cedula]) : '',
         cobrador: col.cobrador ? limpiarTexto(r[col.cobrador]) : '',
@@ -338,7 +355,7 @@ exports.prepararBase = async (req, res) => {
       else if (vistos.has(f.numero)) motivo = 'Celular repetido';
       else if (h && h.excluido) motivo = 'Pidió no recibir mensajes / número equivocado';
       else if (f.deuda < saldoMinimo) motivo = `Saldo menor a $${saldoMinimo.toFixed(2)}`;
-      else if (col.dias && f.dias <= 0) motivo = 'Sin atraso (la cuota aún no vence)';
+      else if ((col.fechaFin || col.dias) && f.dias <= 0) motivo = 'Sin atraso (la cuota aún no vence)';
       else if (diasSinRepetir > 0 && h && h.fecha && Date.parse(h.fecha) >= limiteMs) {
         motivo = `Ya recibió mensaje el ${new Date(h.fecha).toLocaleDateString('es-EC', { timeZone: 'America/Guayaquil' })}`;
       }
@@ -382,7 +399,7 @@ exports.prepararBase = async (req, res) => {
     listos.filter(c => !c.control).forEach(c => { const m = c.mes || 'sin mes'; porMes[m] = (porMes[m] || 0) + 1; });
 
     const filaExcel = c => ({
-      Nombre: c.nombre, Telefono: c.numero, Mes: c.mes, Deuda: c.deuda, Dias: c.dias, Cobrador: c.cobrador,
+      Nombre: c.nombre, Telefono: c.numero, Mes: c.mes, Deuda: c.deuda, Dias: c.dias, 'HOY (a fin de mes)': c.diasFinMes ?? '', Cobrador: c.cobrador,
       Cedula: c.cedula, 'Nombre Vendedor': c.vendedor, 'Tienda Factura': c.tienda,
       'Calificación Cliente Mensual': c.calMensual, 'Calificación Real Afectación': c.calRodamiento,
       'Categoría Cliente Rodamiento': c.rodamiento, 'Suma Saldo Crédito Final Total': c.saldoTotal
@@ -400,7 +417,8 @@ exports.prepararBase = async (req, res) => {
         control: !!(controlTel && celularValido(controlTel)),
         costoAprox: Math.round(clients.length * COSTO_MENSAJE * 100) / 100,
         diasSinRepetir, saldoMinimo,
-        columnaSaldo: col.deuda, columnaDias: col.dias || '(no encontrada)'
+        columnaSaldo: col.deuda,
+        columnaDias: col.fechaFin ? 'días reales hasta hoy (desde la cuota más vencida)' : (col.dias ? col.dias + ' (a fin de mes)' : '(no encontrada)')
       },
       excluidos: excluidos.map(e => ({ nombre: e.nombre, telefono: e.telOriginal, deuda: e.deuda, dias: e.dias, cobrador: e.cobrador, motivo: e.motivo })),
       archivos: {
