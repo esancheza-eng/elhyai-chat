@@ -380,6 +380,31 @@ async function restaurarCampana() {
 restaurarCampana();
 
 // ── CONTROLES ─────────────────────────────────────────────
+// ── PLANTILLAS APROBADAS EN META ──────────────────────────
+// Lista las plantillas de la cuenta de WhatsApp para elegirlas en Campañas
+// (solo las aprobadas; el nombre y el idioma se llenan solos en el panel).
+exports.plantillas = async (req, res) => {
+  try {
+    const lista = await wa.listarPlantillas();
+    res.json({
+      ok: true,
+      plantillas: lista.filter(t => t.status === 'APPROVED').map(t => {
+        const body = (t.components || []).find(c => c.type === 'BODY');
+        const header = (t.components || []).find(c => c.type === 'HEADER');
+        const texto = body ? body.text || '' : '';
+        return {
+          nombre: t.name, idioma: t.language,
+          tipo: t.category === 'MARKETING' ? 'marketing' : t.category === 'AUTHENTICATION' ? 'autenticacion' : 'utilidad',
+          variables: (texto.match(/\{\{\d+\}\}/g) || []).length,
+          texto, encabezado: header ? header.format : null
+        };
+      }).sort((a, b) => a.nombre.localeCompare(b.nombre))
+    });
+  } catch (e) {
+    res.status(400).json({ ok: false, error: e.message });
+  }
+};
+
 exports.pauseCampaign = (req, res) => {
   activeJob.paused = true;
   guardarCampana();

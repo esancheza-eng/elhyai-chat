@@ -262,6 +262,13 @@ input, select, textarea { color:var(--text) !important; }
 
       <div id="templateFields">
         <div class="form-group">
+          <label>Plantillas aprobadas en Meta</label>
+          <select id="tplLista" onchange="elegirPlantilla()">
+            <option value="">— Conecta el servidor para ver las plantillas —</option>
+          </select>
+          <p class="hint" id="tplInfo">Al elegir una, el nombre y el idioma se llenan solos. También puedes escribirlos a mano abajo.</p>
+        </div>
+        <div class="form-group">
           <label>Nombre exacto de la plantilla en Meta</label>
           <input type="text" id="templateName" placeholder="Ej: recordatorio_pago_marcimex">
           <p class="hint">Debe existir y estar aprobada en Meta Business Manager. La plantilla debe tener 3 variables: {{1}} nombre, {{2}} deuda, {{3}} días.</p>
@@ -504,10 +511,50 @@ async function checkBackend() {
     if (!res.ok) throw new Error();
     badge.innerHTML = '<span class="badge badge-live">conectado</span>';
     reconectarCampana();
+    cargarPlantillas();
   } catch(e) {
     badge.innerHTML = '<span class="badge badge-off">sin conexión</span>';
     showToast('No se pudo conectar al backend. Revisa la URL.', true);
   }
+}
+
+// ── PLANTILLAS APROBADAS (Meta) ─────────────────────────
+let plantillasMeta = [];
+function escTxt(t) { return String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+async function cargarPlantillas() {
+  const sel = document.getElementById('tplLista');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">Cargando plantillas…</option>';
+  try {
+    const res = await apiFetch(`${backendUrl}/api/campaigns/plantillas`);
+    const d = await res.json();
+    if (!res.ok || !d.ok) throw new Error(d.error || 'No se pudieron leer');
+    plantillasMeta = d.plantillas || [];
+    const tipo = { marketing: 'promoción', utilidad: 'cobranza', autenticacion: 'código' };
+    sel.innerHTML = '<option value="">— Elegir plantilla —</option>' + plantillasMeta.map((t, i) =>
+      `<option value="${i}">${escTxt(t.nombre)} · ${escTxt(t.idioma)} · ${tipo[t.tipo] || t.tipo} · ${t.variables} variable(s)</option>`).join('');
+    if (!plantillasMeta.length) sel.innerHTML = '<option value="">No hay plantillas aprobadas en esta cuenta</option>';
+  } catch (e) {
+    sel.innerHTML = '<option value="">No se pudieron cargar (escribe el nombre a mano)</option>';
+    document.getElementById('tplInfo').textContent = 'Detalle: ' + e.message;
+  }
+}
+function elegirPlantilla() {
+  const t = plantillasMeta[Number(document.getElementById('tplLista').value)];
+  const info = document.getElementById('tplInfo');
+  if (!t) { info.textContent = 'Al elegir una, el nombre y el idioma se llenan solos. También puedes escribirlos a mano abajo.'; return; }
+  document.getElementById('templateName').value = t.nombre;
+  document.getElementById('templateLang').value = t.idioma;
+  let aviso = '';
+  if (t.variables !== 3) {
+    aviso = ` ⚠️ Esta plantilla tiene ${t.variables} variable(s): indícalas en "Opciones avanzadas" (o escribe "ninguna").`;
+    document.getElementById('advBox').open = true;
+  }
+  if (t.encabezado && t.encabezado !== 'TEXT') {
+    aviso += ` Tiene encabezado de tipo ${t.encabezado}: pon el enlace en "Encabezado multimedia".`;
+    document.getElementById('advBox').open = true;
+  }
+  info.innerHTML = `<b>Texto:</b> ${escTxt(t.texto)}${aviso ? '<br>' + escTxt(aviso) : ''}`;
 }
 
 // ── UPLOAD EXCEL ────────────────────────────────────────

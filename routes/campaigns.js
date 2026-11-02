@@ -17,6 +17,9 @@ router.post('/cedulas', ctrl.guardarCedulas);
 // Preparar base: limpia el Excel original (no envía nada)
 router.post('/preparar', require('../controllers/preparar').prepararBase);
 
+// Plantillas aprobadas en Meta (para elegirlas en el panel)
+router.get('/plantillas', ctrl.plantillas);
+
 // Estado y log
 router.get('/status',  ctrl.getStatus);
 router.get('/log',     ctrl.getLog);

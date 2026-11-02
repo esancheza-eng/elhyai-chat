@@ -87,7 +87,27 @@ async function sendTemplateMessage(to, templateName, languageCode = 'es', compon
   });
 }
 
+// Plantillas de la cuenta de WhatsApp (WABA). WABA_ID en Render; si no está,
+// se usa la cuenta de Marcimex Cobranzas.
+const WABA_POR_DEFECTO = '2370806170073829';
+async function listarPlantillas() {
+  const { token } = getConfig();
+  const waba = process.env.WABA_ID || WABA_POR_DEFECTO;
+  if (!token) throw new Error('Falta WHATSAPP_TOKEN en las variables de entorno.');
+  const r = await fetch(
+    `https://graph.facebook.com/${GRAPH_VERSION}/${waba}/message_templates?fields=name,language,status,category,components&limit=200`,
+    { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(20000) }
+  );
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    const m = data && data.error;
+    throw new Error((m && (m.error_user_msg || m.message)) || 'No se pudieron leer las plantillas de Meta');
+  }
+  return data.data || [];
+}
+
 module.exports = {
+  listarPlantillas,
   checkCredentials,
   sleep,
   sendTextMessage,
